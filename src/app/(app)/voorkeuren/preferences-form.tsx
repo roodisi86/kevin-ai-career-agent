@@ -62,6 +62,7 @@ export function PreferencesForm({ initial }: { initial: Preferences }) {
   const [locationsText, setLocationsText] = useState(initial.locations.preferred.join("\n"));
   const [negativeText, setNegativeText] = useState(initial.negativeRoleSignals.join("\n"));
   const [excludedTitleText, setExcludedTitleText] = useState(initial.excludedTitleTerms.join("\n"));
+  const [blockerText, setBlockerText] = useState(initial.blockerPhrases.join("\n"));
   const [aliasText, setAliasText] = useState(() => initial.excludedEmployers.map((e) => e.aliases.join(", ")));
   const [newSector, setNewSector] = useState("");
   const [newEmployer, setNewEmployer] = useState("");
@@ -78,6 +79,7 @@ export function PreferencesForm({ initial }: { initial: Preferences }) {
     locations: { ...prefs.locations, preferred: lines(locationsText) },
     negativeRoleSignals: lines(negativeText),
     excludedTitleTerms: lines(excludedTitleText),
+    blockerPhrases: lines(blockerText),
     excludedEmployers: prefs.excludedEmployers.map((e, i) => ({
       name: e.name,
       aliases: (aliasText[i] ?? "")
@@ -449,6 +451,19 @@ export function PreferencesForm({ initial }: { initial: Preferences }) {
             onChange={(e) => setExcludedTitleText(e.target.value)}
           />
           <p className="help">{t.preferences.excludedTitleTermsHelp}</p>
+        </div>
+        <div>
+          <label htmlFor="blocker-phrases" className="label">
+            {t.preferences.blockerPhrases}
+          </label>
+          <textarea
+            id="blocker-phrases"
+            rows={5}
+            className="input"
+            value={blockerText}
+            onChange={(e) => setBlockerText(e.target.value)}
+          />
+          <p className="help">{t.preferences.blockerPhrasesHelp}</p>
         </div>
       </section>
 

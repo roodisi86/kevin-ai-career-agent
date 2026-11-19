@@ -34,6 +34,30 @@ const REASON_TEXT: Record<string, string> = {
   unclear_employer: "employer unclear",
 };
 
+/** First blocker phrase found as a whole phrase in the text, or null. */
+export function findBlocker(prefs: Preferences, text: string): string | null {
+  const words = ` ${text.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
+  for (const phrase of prefs.blockerPhrases) {
+    const p = phrase.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+    if (p && words.includes(` ${p} `)) return phrase;
+  }
+  return null;
+}
+
+/** Applies the user's blockers to any assessment: score 0, always "reject". */
+export function applyBlocker<T extends { score: number; classification: string; gaps: string[] }>(
+  result: T,
+  blocker: string | null,
+): T {
+  if (!blocker) return result;
+  return {
+    ...result,
+    score: 0,
+    classification: "reject",
+    gaps: [`Bevat een blokkerend signaal uit je voorkeuren: "${blocker}".`, ...result.gaps].slice(0, 6),
+  };
+}
+
 export function preferenceLines(prefs: Preferences): string[] {
   const lines: string[] = [];
   const tracks = prefs.tracks.filter((t) => t.enabled);
@@ -54,6 +78,7 @@ export function preferenceLines(prefs: Preferences): string[] {
   if (sectors("lower").length) lines.push(`Sectors with lower priority (rank lower, do not hide): ${sectors("lower").join(", ")}`);
   if (sectors("exclude").length) lines.push(`Excluded sectors: ${sectors("exclude").join(", ")}`);
   if (prefs.negativeRoleSignals.length) lines.push(`Negative role signals: ${prefs.negativeRoleSignals.join(", ")}`);
+  if (prefs.blockerPhrases.length) lines.push(`Blockers (any of these in title or text = clear mismatch): ${prefs.blockerPhrases.join(", ")}`);
   if (prefs.earliestStartDate) lines.push(`Earliest start date: ${prefs.earliestStartDate}`);
   return lines;
 }

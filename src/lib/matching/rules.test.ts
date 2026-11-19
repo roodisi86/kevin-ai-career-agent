@@ -127,3 +127,18 @@ describe("subscription queue prompt", () => {
     expect(parseMatchOutput("```json\n{}\n```").ok).toBe(false);
   });
 });
+
+describe("user blockers", () => {
+  it("makes a vacancy an automatic reject with score 0 when a blocker phrase appears", async () => {
+    const { applyBlocker, findBlocker } = await import("./context");
+    const p = { ...prefs, blockerPhrases: ["hunter", "self-source pipeline"] };
+    expect(findBlocker(p, "We need a true Hunter who can self-source pipeline")).toBe("hunter");
+    expect(findBlocker(p, "Self-source  pipeline from day one")).toBe("self-source pipeline");
+    expect(findBlocker(p, "Hunters of value? No: a partnerships role")).toBeNull(); // whole phrases only
+    const good = scoreWithRules({ job: job({}), facts: FACTS, prefs: p, assessment, feedback: [] });
+    const blocked = applyBlocker(good, findBlocker(p, "Hunter role"));
+    expect(blocked.score).toBe(0);
+    expect(blocked.classification).toBe("reject");
+    expect(blocked.gaps[0]).toMatch(/blokkerend/);
+  });
+});

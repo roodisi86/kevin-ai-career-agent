@@ -483,6 +483,9 @@ export const nl = {
       "Bij bureaus is de echte werkgever onbekend, dus uitsluitingen, multinational en contract zijn niet te controleren.",
     excludedTitleTerms: "Uitsluiten als de titel een van deze woorden bevat (één per regel)",
     excludedTitleTermsHelp: "Bijvoorbeeld operationele of assistentrollen: restaurant, store, deputy, assistent.",
+    blockerPhrases: "Blokkerende woorden in titel of vacaturetekst (één per regel)",
+    blockerPhrasesHelp:
+      "Staat een van deze woorden in de titel of tekst, dan krijgt de vacature score 0 en 'Past niet' (je ziet hem nog onder Weergave → Past niet). Bijvoorbeeld: hunter, self-source pipeline, cold outbound.",
     startDate: "Vroegste startdatum",
     saveError: "Opslaan mislukt: controleer de velden.",
   },

@@ -22,7 +22,7 @@ import {
   type PromptFact,
 } from "@/lib/ai/match";
 import { loadPreferences } from "@/lib/scanner/service";
-import { feedbackLines, gateLines, jobSignalLines, preferenceLines } from "./context";
+import { applyBlocker, feedbackLines, findBlocker, gateLines, jobSignalLines, preferenceLines } from "./context";
 
 /**
  * Everything about the candidate that goes into a match prompt, plus a hash
@@ -217,7 +217,7 @@ export async function scoreJob(ctx: AppContext, jobId: string, { force = false }
     return { status: "failed", reason: result.reason };
   }
 
-  const verified = verifyMatch(result.output, {
+  const verifiedRaw = verifyMatch(result.output, {
     jobText: jobEvidenceText({
       title: job.title,
       company: job.company_name,
@@ -228,6 +228,7 @@ export async function scoreJob(ctx: AppContext, jobId: string, { force = false }
     gate: job.gate_status,
     limitedEvidence: limited,
   });
+  const verified = applyBlocker(verifiedRaw, findBlocker(input.prefs, `${job.title}\n${job.description_text ?? ""}`));
 
   const { error } = await supabase.from("job_matches").upsert(
     {
@@ -353,12 +354,13 @@ export async function refreshMatches(ctx: AppContext): Promise<RefreshSummary> {
       continue;
     }
     const limited = limitedEvidence(job);
-    const verified = verifyMatch(parsed.output, {
+    const verifiedRaw = verifyMatch(parsed.output, {
       jobText: jobEvidenceText({ title: job.title, company: job.company_name, location: job.location_text, description: job.description_text }),
       facts: input.facts,
       gate: job.gate_status,
       limitedEvidence: limited,
     });
+    const verified = applyBlocker(verifiedRaw, findBlocker(input.prefs, `${job.title}\n${job.description_text ?? ""}`));
     const { error } = await supabase.from("job_matches").upsert(
       {
         tenant_id: ctx.tenantId,
@@ -401,7 +403,7 @@ export async function refreshMatches(ctx: AppContext): Promise<RefreshSummary> {
       return typeof v === "object" && v && (v.value === "yes" || v.value === "no") ? v.value : "unknown";
     };
     const salary = (job.salary_json ?? {}) as { annualEur?: number };
-    const result = scoreWithRules({
+    const rulesResult = scoreWithRules({
       job: {
         title: job.title,
         company: job.company_name,
@@ -425,6 +427,7 @@ export async function refreshMatches(ctx: AppContext): Promise<RefreshSummary> {
       assessment: input.assessment,
       feedback: input.feedback,
     });
+    const result = applyBlocker(rulesResult, findBlocker(input.prefs, `${job.title}\n${job.description_text ?? ""}`));
     const inputHash = rulesHashFor(job, input);
     const { error } = await supabase.from("job_matches").upsert(
       {

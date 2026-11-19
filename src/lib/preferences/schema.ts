@@ -105,6 +105,9 @@ export const PreferencesSchema = z.object({
   excludedTitleTerms: uniqueStrings(80).default(DEFAULT_EXCLUDED_TITLE_TERMS),
   excludeRecruitmentAgencies: z.boolean().default(true),
   minimumSeniority: SeniorityLevel.default("manager"),
+  // Words that make a vacancy an automatic "Past niet" when they appear in the
+  // title or the text (e.g. "hunter", "self-source pipeline").
+  blockerPhrases: uniqueStrings(40).default([]),
   earliestStartDate: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -166,6 +169,7 @@ export function defaultPreferences(): Preferences {
     excludedTitleTerms: [...DEFAULT_EXCLUDED_TITLE_TERMS],
     excludeRecruitmentAgencies: true,
     minimumSeniority: "manager",
+    blockerPhrases: [],
     earliestStartDate: null,
   };
 }
