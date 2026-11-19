@@ -500,3 +500,71 @@ export async function regateAll(ctx: AppContext): Promise<number> {
   }
   return changed;
 }
+
+/**
+ * Daily automation: check up to `limit` not-yet-checked company targets for a
+ * public ATS board (Greenhouse, SmartRecruiters, Lever, Ashby) and approve the
+ * boards that pass verification, so they are scanned from then on. The user
+ * can revoke any source on the Companies page.
+ */
+export async function verifyPendingTargets(ctx: AppContext, limit = 150): Promise<{ checked: number; found: number; approved: number }> {
+  const supabase = await dbFor(ctx);
+  const { data: targets } = await supabase
+    .from("company_targets")
+    .select("id")
+    .eq("tenant_id", ctx.tenantId)
+    .is("board_checked_at", null)
+    .order("created_at")
+    .limit(limit);
+  let checked = 0;
+  let found = 0;
+  const ids: string[] = [];
+  for (const target of targets ?? []) {
+    try {
+      const result = await verifyCompanyTarget(ctx, target.id);
+      checked++;
+      if (result.boards.some((b) => b.verified)) {
+        found++;
+        ids.push(target.id);
+      }
+    } catch {
+      // Network hiccup: leave unchecked, it is retried next run.
+    }
+  }
+  let approved = 0;
+  if (ids.length) {
+    const { data } = await supabase
+      .from("job_sources")
+      .update({ approved: true })
+      .eq("tenant_id", ctx.tenantId)
+      .in("company_target_id", ids)
+      .eq("verification_status", "verified")
+      .eq("approved", false)
+      .select("id");
+    approved = data?.length ?? 0;
+    if (approved) await audit(ctx, "source.approved", "company_target", null, { count: approved, automatic: true });
+  }
+  return { checked, found, approved };
+}
+
+/** All company targets (PostgREST returns at most 1000 rows per request). */
+export async function loadAllTargets(ctx: AppContext) {
+  const supabase = await dbFor(ctx);
+  const rows: Awaited<ReturnType<typeof fetchPage>> = [];
+  async function fetchPage(from: number) {
+    const { data } = await supabase
+      .from("company_targets")
+      .select("*")
+      .eq("tenant_id", ctx.tenantId)
+      .order("sector")
+      .order("company_name")
+      .range(from, from + 999);
+    return data ?? [];
+  }
+  for (let from = 0; ; from += 1000) {
+    const page = await fetchPage(from);
+    rows.push(...page);
+    if (page.length < 1000) break;
+  }
+  return rows;
+}

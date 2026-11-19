@@ -16,7 +16,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { AppContext } from "@/lib/dal";
 import type { Database } from "@/lib/supabase/database.types";
 import { isApiMatchingEnabled } from "@/lib/env";
-import { finishScan, runSourceInScan, startScan } from "@/lib/scanner/service";
+import { finishScan, runSourceInScan, startScan, verifyPendingTargets } from "@/lib/scanner/service";
 import { pendingMatchJobIds, refreshMatches, scoreJob } from "@/lib/matching/service";
 
 const MAX_MATCHES_PER_RUN = 120;
@@ -84,6 +84,10 @@ async function main(): Promise<number> {
         db,
       };
       const label = tenant.is_demo ? "demo workspace" : "workspace";
+
+      // 0. Check a batch of new company targets for a public ATS board.
+      const verification = await verifyPendingTargets(ctx, Number(process.env.VERIFY_TARGETS_PER_RUN ?? 150));
+      console.log(`${label}: checked ${verification.checked} companies, ${verification.found} with a public board, ${verification.approved} sources approved`);
 
       // 1. Scan every approved source, one at a time (polite to the APIs).
       const plan = await startScan(ctx, { trigger: "scheduled" });

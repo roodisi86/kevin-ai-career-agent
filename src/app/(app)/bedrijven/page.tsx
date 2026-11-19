@@ -1,7 +1,7 @@
 import { getAppContext } from "@/lib/dal";
 import { getDictionary } from "@/lib/i18n";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { adzunaConfigured, ensurePlatformSources, SOURCE_LABELS } from "@/lib/scanner/service";
+import { adzunaConfigured, ensurePlatformSources, loadAllTargets, SOURCE_LABELS } from "@/lib/scanner/service";
 import { formatDateTime } from "@/lib/time";
 import type { JobSourceRow } from "@/lib/supabase/database.types";
 import { approveAllVerified, loadSuggested, removeCompany, setSourceApproval } from "./actions";
@@ -46,9 +46,9 @@ export default async function CompaniesPage() {
   const ctx = await getAppContext();
   await ensurePlatformSources(ctx);
   const supabase = await createSupabaseServerClient();
-  const [{ data: targets }, { data: sources }] = await Promise.all([
-    supabase.from("company_targets").select("*").eq("tenant_id", ctx.tenantId).order("sector").order("company_name"),
-    supabase.from("job_sources").select("*").eq("tenant_id", ctx.tenantId).order("provider"),
+  const [targets, { data: sources }] = await Promise.all([
+    loadAllTargets(ctx),
+    supabase.from("job_sources").select("*").eq("tenant_id", ctx.tenantId).order("provider").limit(1000),
   ]);
 
   const platform = (sources ?? []).filter((s) => !s.company_target_id);
@@ -63,6 +63,7 @@ export default async function CompaniesPage() {
   const pendingApproval = (sources ?? []).some((s) => s.company_target_id && s.verification_status === "verified" && !s.approved);
   const adzunaReady = adzunaConfigured();
 
+  const checkedCount = (targets ?? []).filter((tg) => tg.board_checked_at).length;
   const sectors = new Map<string, NonNullable<typeof targets>>();
   for (const tg of targets ?? []) {
     const key = tg.sector ?? "Overig";
@@ -125,10 +126,17 @@ export default async function CompaniesPage() {
           </div>
         ) : (
           <>
-            <VerifyAllButton ids={unchecked} />
-            {[...sectors.entries()].map(([sector, list]) => (
-              <div key={sector}>
-                <h3 className="mb-2 mt-4 text-sm font-semibold uppercase tracking-wide text-teal-700">{sector}</h3>
+            <p className="text-sm text-navy-600" data-testid="verify-progress">
+              {t.companies.autoVerify(checkedCount, targets?.length ?? 0)}
+            </p>
+            <VerifyAllButton ids={unchecked.slice(0, 50)} />
+            {[...sectors.entries()].map(([sector, list]) => {
+              const sectorVerified = list.filter((tg) => (byTarget.get(tg.id) ?? []).some((s) => s.verification_status === "verified")).length;
+              return (
+              <details key={sector} open={sectors.size <= 3 || sectorVerified > 0}>
+                <summary className="mb-2 mt-4 cursor-pointer text-sm font-semibold uppercase tracking-wide text-teal-700">
+                  {sector} · {t.companies.sectorCount(list.length, sectorVerified)}
+                </summary>
                 <ul className="divide-y divide-sand-200">
                   {list.map((target) => {
                     const found = byTarget.get(target.id) ?? [];
@@ -170,8 +178,9 @@ export default async function CompaniesPage() {
                     );
                   })}
                 </ul>
-              </div>
-            ))}
+              </details>
+              );
+            })}
           </>
         )}
       </section>

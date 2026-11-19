@@ -690,6 +690,9 @@ export const nl = {
     approve: "Goedkeuren voor scan",
     approved: "Goedgekeurd",
     revoke: "Uitzetten",
+    autoVerify: (checked: number, total: number) =>
+      `${checked} van ${total} bedrijven gecontroleerd op een openbare vacaturepagina. De ochtendscan controleert er elke dag 150 bij en keurt gevonden officiële vacaturepagina's automatisch goed (intrekken kan per bron).`,
+    sectorCount: (n: number, verified: number) => `${n} bedrijven, ${verified} met vacaturepagina`,
     targetsTitle: "Doelbedrijven",
     empty: "Nog geen doelbedrijven.",
     loadSuggested: "Startlijst laden (±75 multinationals)",
@@ -702,7 +705,7 @@ export const nl = {
     add: "Toevoegen",
     verify: "Bronnen zoeken",
     verifying: "Zoeken…",
-    verifyAll: "Bronnen zoeken voor alle bedrijven zonder bron",
+    verifyAll: "Nu bronnen zoeken voor de volgende bedrijven",
     verifyAllRunning: (done: number, total: number) => `Bezig: ${done} van ${total} bedrijven`,
     approveAll: "Alle geverifieerde bronnen goedkeuren",
     noBoard: "Geen openbare vacature-API gevonden (waarschijnlijk Workday, SAP of eigen systeem).",
