@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+/* Warm off-white/sand, deep navy and teal — calm, professional, accessible. */
+@theme {
+  --color-sand-50: #fbf8f2;
+  --color-sand-100: #f5efe3;
+  --color-sand-200: #ebe1cd;
+  --color-sand-300: #dccdb0;
+  --color-navy-900: #0f1b33;
+  --color-navy-800: #17264a;
+  --color-navy-700: #22355f;
+  --color-navy-600: #3a4d78;
+  --color-teal-700: #0f5f5a;
+  --color-teal-600: #12736d;
+  --color-teal-100: #d7ece9;
+  --color-amber-100: #fbecc8;
+  --color-amber-800: #7a4b00;
+  --color-rose-100: #f8dcdc;
+  --color-rose-800: #8a1c1c;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-sand-50);
+  color: var(--color-navy-900);
+  font-family: var(--font-sans);
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-teal-600);
+  outline-offset: 2px;
+}
+
+@utility card {
+  @apply rounded-xl border border-sand-200 bg-white p-5 shadow-sm;
+}
+
+@utility btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60;
+}
+
+@utility btn-primary {
+  @apply btn bg-navy-800 text-white hover:bg-navy-700;
+}
+
+@utility btn-teal {
+  @apply btn bg-teal-600 text-white hover:bg-teal-700;
+}
+
+@utility btn-secondary {
+  @apply btn border border-sand-300 bg-white text-navy-800 hover:bg-sand-100;
+}
+
+@utility btn-danger {
+  @apply btn border border-rose-800/30 bg-white text-rose-800 hover:bg-rose-100;
+}
+
+@utility input {
+  @apply w-full rounded-lg border border-sand-300 bg-white px-3 py-2 text-sm text-navy-900 placeholder:text-navy-600/60;
+}
+
+@utility label {
+  @apply mb-1 block text-sm font-medium text-navy-800;
+}
+
+@utility help {
+  @apply mt-1 text-xs text-navy-600;
+}
+
+@utility badge {
+  @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
+}
