@@ -56,7 +56,7 @@ export type CandidateDocumentRow = {
   storage_path: string;
   original_filename: string;
   file_type: "pdf" | "docx";
-  document_kind: "cv" | "linkedin_profile";
+  document_kind: "cv" | "linkedin_profile" | "assessment";
   size_bytes: number;
   checksum: string;
   processing_status: "uploaded" | "extracted" | "failed";
@@ -76,6 +76,7 @@ export type FactCategory =
   | "skill"
   | "language"
   | "sector"
+  | "work_style"
   | "other";
 
 export type FactStatus = "suggested" | "confirmed" | "rejected";
@@ -210,6 +211,50 @@ export type JobRow = {
   dedupe_key: string;
   duplicate_of: string | null;
   user_state: "new" | "interesting" | "later" | "not_relevant";
+  filtered_out_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CandidateAssessmentRow = {
+  id: string;
+  tenant_id: string;
+  candidate_id: string;
+  schema_version: number;
+  answers_json: Json;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MatchClassification = "top_match" | "stretch" | "research_needed" | "reject";
+
+export type JobMatchRow = {
+  id: string;
+  tenant_id: string;
+  job_id: string;
+  score: number;
+  classification: MatchClassification;
+  hard_gate_status: "pass" | "fail" | "review_required" | null;
+  limited_evidence: boolean;
+  result_json: Json;
+  input_hash: string;
+  profile_version: number;
+  model: string;
+  prompt_version: string;
+  scored_at: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MatchFeedbackRow = {
+  id: string;
+  tenant_id: string;
+  job_id: string;
+  label: "good" | "bad";
+  reasons: string[];
+  note: string | null;
+  match_score: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -236,6 +281,12 @@ export type Database = {
         JobRow,
         "tenant_id" | "provider" | "external_job_id" | "company_name" | "title" | "canonical_url" | "raw_hash" | "dedupe_key"
       >;
+      candidate_assessments: TableDef<CandidateAssessmentRow, "tenant_id" | "candidate_id">;
+      job_matches: TableDef<
+        JobMatchRow,
+        "tenant_id" | "job_id" | "score" | "classification" | "result_json" | "input_hash" | "profile_version" | "model" | "prompt_version"
+      >;
+      match_feedback: TableDef<MatchFeedbackRow, "tenant_id" | "job_id" | "label">;
     };
     Views: { [_ in never]: never };
     Functions: {

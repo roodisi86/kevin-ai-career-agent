@@ -353,3 +353,88 @@ describe("job scanner isolation", () => {
     expect(code).toBe("23514");
   });
 });
+
+describe("assessment, match and feedback isolation", () => {
+  it("user B cannot read A's assessment, matches or feedback, nor attach rows to A's job or candidate", async () => {
+    const jobId = await asUser(
+      db.pool,
+      userA,
+      async (c) => {
+        const job = await c.query<{ id: string }>(
+          `insert into public.jobs (tenant_id, provider, external_job_id, company_name, title, canonical_url, raw_hash, dedupe_key)
+           values ($1, 'manual', 'm-1', 'DEMO Co', 'DEMO Strategy Director', 'https://example.invalid/m1', repeat('e', 64), 'demo co|strategy|nl')
+           returning id`,
+          [tenantA],
+        );
+        const id = job.rows[0].id;
+        await c.query(
+          `insert into public.candidate_assessments (tenant_id, candidate_id, answers_json) values ($1, $2, '{"teamSize":"6_15"}')`,
+          [tenantA, candidateA],
+        );
+        await c.query(
+          `insert into public.job_matches (tenant_id, job_id, score, classification, result_json, input_hash, profile_version, model, prompt_version)
+           values ($1, $2, 72, 'top_match', '{}', repeat('f', 64), 1, 'demo-model', 'match-v1')`,
+          [tenantA, id],
+        );
+        await c.query(`insert into public.match_feedback (tenant_id, job_id, label, reasons) values ($1, $2, 'good', '{right_level}')`, [
+          tenantA,
+          id,
+        ]);
+        return id;
+      },
+      { commit: true },
+    );
+
+    const visible = await asUser(db.pool, userB, async (c) => {
+      const counts = await Promise.all(
+        ["candidate_assessments", "job_matches", "match_feedback"].map((t) =>
+          c.query(`select 1 from public.${t}`).then((r) => r.rowCount ?? 0),
+        ),
+      );
+      return counts.reduce((a, b) => a + b, 0);
+    });
+    expect(visible).toBe(0);
+
+    for (const sql of [
+      `insert into public.job_matches (tenant_id, job_id, score, classification, result_json, input_hash, profile_version, model, prompt_version)
+       values ($1, '${jobId}', 99, 'top_match', '{}', repeat('a', 64), 1, 'x', 'x')`,
+      `insert into public.match_feedback (tenant_id, job_id, label) values ($1, '${jobId}', 'bad')`,
+      `insert into public.candidate_assessments (tenant_id, candidate_id) values ($1, '${candidateA}')`,
+    ]) {
+      const code = await expectPgError(asUser(db.pool, userB, (c) => c.query(sql, [tenantB])));
+      expect(code).toBe("42501");
+    }
+
+    // B cannot change A's rows either (RLS hides them: zero rows updated).
+    const updated = await asUser(db.pool, userB, (c) =>
+      c.query(`update public.job_matches set score = 1 where job_id = $1`, [jobId]).then((r) => r.rowCount),
+    );
+    expect(updated).toBe(0);
+  });
+
+  it("saving an assessment bumps the profile version (match cache key)", async () => {
+    const before = await asUser(db.pool, userA, (c) =>
+      c.query<{ profile_version: number }>("select profile_version from public.candidate_profiles").then((r) => r.rows[0].profile_version),
+    );
+    const after = await asUser(db.pool, userA, async (c) => {
+      await c.query(`update public.candidate_assessments set answers_json = '{"teamSize":"16_50"}' where candidate_id = $1`, [candidateA]);
+      const { rows } = await c.query<{ profile_version: number }>("select profile_version from public.candidate_profiles");
+      return rows[0].profile_version;
+    });
+    expect(after).toBe(before + 1);
+  });
+
+  it("scores and classifications outside the allowed range are refused", async () => {
+    const code = await expectPgError(
+      asUser(db.pool, userA, async (c) => {
+        const { rows } = await c.query<{ id: string }>("select id from public.jobs limit 1");
+        await c.query(
+          `insert into public.job_matches (tenant_id, job_id, score, classification, result_json, input_hash, profile_version, model, prompt_version)
+           values ($1, $2, 140, 'top_match', '{}', repeat('a', 64), 1, 'x', 'x')`,
+          [tenantA, rows[0].id],
+        );
+      }),
+    );
+    expect(code).toBe("23514");
+  });
+});
