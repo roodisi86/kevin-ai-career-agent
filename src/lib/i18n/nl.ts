@@ -89,6 +89,16 @@ export const nl = {
       title: "Cv uploaden",
       help: "PDF of DOCX, maximaal 5 MB. Het bestand wordt privé opgeslagen in de EU (Frankfurt) en is alleen voor jou zichtbaar.",
       choose: "Kies een bestand",
+      kindLegend: "Soort document",
+      kindCv: "Cv",
+      kindLinkedin: "LinkedIn-profiel (PDF)",
+      linkedinHelp:
+        "Op LinkedIn: ga naar je eigen profiel → Meer (of Resources) → Opslaan als PDF. Upload dat bestand hier. LinkedIn wordt nooit automatisch uitgelezen.",
+      autoLabel: "Na upload automatisch laten analyseren door Claude",
+      autoHelp:
+        "De uitgelezen tekst gaat dan direct naar de Anthropic API. Voorstellen blijven suggesties tot jij ze bevestigt. Je kunt dit altijd weer uitzetten.",
+      autoSave: "Instelling opslaan",
+      autoRunning: "Claude leest het document en stelt functies, opleiding en andere feiten voor…",
       submit: "Uploaden",
       uploading: "Bezig met uploaden en tekst uitlezen…",
       done: "Cv geüpload en tekst uitgelezen.",
@@ -108,6 +118,7 @@ export const nl = {
       empty: "Nog geen cv geüpload.",
       uploadedAt: "Geüpload",
       status: { uploaded: "Geüpload", extracted: "Tekst uitgelezen", failed: "Uitlezen mislukt" },
+      kind: { cv: "Cv", linkedin_profile: "LinkedIn-profiel" },
       extractionErrors: {
         no_text: "Er is geen leesbare tekst gevonden (mogelijk een gescande PDF).",
         parse_failed: "Het bestand kon niet worden gelezen.",
@@ -140,6 +151,7 @@ export const nl = {
         quota: "Het quotum van de AI-dienst is bereikt.",
         auth: "De API-sleutel wordt geweigerd. Controleer ANTHROPIC_API_KEY.",
         no_text: "Dit document heeft geen uitgelezen tekst.",
+        timeout: "Claude had te veel tijd nodig. Probeer het nog een keer; feiten die al zijn toegevoegd worden niet dubbel gemaakt.",
       },
     },
     facts: {
@@ -166,6 +178,8 @@ export const nl = {
       status: { suggested: "Suggestie", confirmed: "Bevestigd", rejected: "Afgewezen" },
       confirmedOn: "Bevestigd op",
       deleteConfirm: "Dit feit definitief verwijderen?",
+      confirmAll: (n: number) => `Alle ${n} gewone suggesties bevestigen`,
+      confirmAllHelp: "Gevoelige claims (cijfers, P&L, teamgrootte) bevestig je los.",
       legend: {
         confirmed: "Bevestigd door jou",
         suggested: "Afgeleid / voorgesteld — nog niet gebruikt",

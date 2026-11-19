@@ -53,6 +53,7 @@ export type CandidateDocumentRow = {
   storage_path: string;
   original_filename: string;
   file_type: "pdf" | "docx";
+  document_kind: "cv" | "linkedin_profile";
   size_bytes: number;
   checksum: string;
   processing_status: "uploaded" | "extracted" | "failed";

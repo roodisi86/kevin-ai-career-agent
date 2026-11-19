@@ -4,10 +4,20 @@ import { isAiConfigured } from "@/lib/env";
 import { loadProfileData } from "@/lib/profile/queries";
 import { missingCategories } from "@/lib/profile/summary";
 import { formatDateTime } from "@/lib/time";
-import { acceptSummarySuggestion, deleteDocument, deleteFact, discardSummarySuggestion, restoreFact } from "./actions";
+import { bulkConfirmable } from "@/lib/ai/cv-facts";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
+import {
+  acceptSummarySuggestion,
+  confirmAllNonSensitive,
+  deleteDocument,
+  deleteFact,
+  discardSummarySuggestion,
+  restoreFact,
+} from "./actions";
 import {
   AddFactForm,
   AiSuggestButton,
+  AutoAnalysisToggle,
   BasicsForm,
   ConfirmDeleteButton,
   SuggestionCard,
@@ -24,6 +34,14 @@ export default async function ProfilePage() {
   const ctx = await getAppContext();
   const { profile, documents, facts } = await loadProfileData(ctx);
   const aiConfigured = isAiConfigured();
+  const supabase = await createSupabaseServerClient();
+  const { data: consent } = await supabase
+    .from("consent_records")
+    .select("status")
+    .eq("candidate_id", ctx.candidateId)
+    .eq("scope", "ai_analysis")
+    .maybeSingle();
+  const autoAnalyse = aiConfigured && consent?.status === "granted";
 
   const suggested = facts.filter((f) => f.status === "suggested");
   const confirmed = facts.filter((f) => f.status === "confirmed");
@@ -47,7 +65,8 @@ export default async function ProfilePage() {
           <h2 id="upload" className="mb-3 font-semibold">
             {t.profile.upload.title}
           </h2>
-          <UploadForm />
+          <UploadForm autoAnalyse={autoAnalyse} />
+          {aiConfigured && <AutoAnalysisToggle enabled={consent?.status === "granted"} />}
         </section>
 
         <section aria-labelledby="basics" className="card">
@@ -101,7 +120,10 @@ export default async function ProfilePage() {
               <li key={doc.id} className="space-y-3 py-4" data-testid="document">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <p className="font-medium">{doc.original_filename}</p>
+                    <p className="font-medium">
+                      {doc.original_filename}{" "}
+                      <span className="badge bg-sand-200 text-navy-800">{t.profile.documents.kind[doc.document_kind]}</span>
+                    </p>
                     <p className="text-xs text-navy-600">
                       {doc.file_type.toUpperCase()} · {formatSize(doc.size_bytes)} · {t.profile.documents.uploadedAt}{" "}
                       {formatDateTime(doc.created_at)} · {t.profile.documents.status[doc.processing_status]}
@@ -152,11 +174,21 @@ export default async function ProfilePage() {
         {suggested.length === 0 ? (
           <p className="text-sm text-navy-600">{t.profile.facts.reviewEmpty}</p>
         ) : (
+          <>
+          {bulkConfirmable(suggested).length > 0 && (
+            <form action={confirmAllNonSensitive} className="mb-3 flex flex-wrap items-center gap-3">
+              <button type="submit" className="btn-teal">
+                {t.profile.facts.confirmAll(bulkConfirmable(suggested).length)}
+              </button>
+              <span className="help">{t.profile.facts.confirmAllHelp}</span>
+            </form>
+          )}
           <ul className="space-y-3">
             {suggested.map((fact) => (
               <SuggestionCard key={fact.id} fact={fact} />
             ))}
           </ul>
+          </>
         )}
       </section>
 

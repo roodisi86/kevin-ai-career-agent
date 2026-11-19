@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  bulkConfirmable,
   buildCvFactsUserMessage,
   CV_FACTS_SYSTEM_PROMPT,
   parseFactSuggestions,
@@ -157,5 +158,39 @@ describe("suggested profile summary", () => {
 
   it("rejects malformed output without profile_summary", () => {
     expect(parseFactSuggestions({ facts: [] }).ok).toBe(false);
+  });
+});
+
+describe("roles, education and known facts", () => {
+  it("asks explicitly for roles and education as separate facts", () => {
+    expect(CV_FACTS_SYSTEM_PROMPT).toMatch(/category "role"/);
+    expect(CV_FACTS_SYSTEM_PROMPT).toMatch(/category "education"/);
+    expect(CV_FACTS_SYSTEM_PROMPT).toMatch(/LinkedIn profile export/);
+  });
+
+  it("passes known facts so Claude only proposes new ones", () => {
+    const message = buildCvFactsUserMessage(CV_TEXT, {
+      kind: "linkedin_profile",
+      knownFacts: ["Native Dutch; fluent English"],
+    });
+    expect(message).toContain("LinkedIn profile export");
+    expect(message).toContain("<known_facts>\n- Native Dutch; fluent English\n</known_facts>");
+    expect(message.indexOf("<known_facts>")).toBeLessThan(message.indexOf("<cv_document>"));
+  });
+
+  it("marks an empty profile explicitly", () => {
+    expect(buildCvFactsUserMessage(CV_TEXT)).toContain("<known_facts>\n(none)\n</known_facts>");
+  });
+});
+
+describe("bulk confirmation", () => {
+  it("never includes sensitive claims or non-suggestions", () => {
+    const facts = [
+      { id: "a", status: "suggested", is_sensitive: false },
+      { id: "b", status: "suggested", is_sensitive: true },
+      { id: "c", status: "confirmed", is_sensitive: false },
+      { id: "d", status: "rejected", is_sensitive: false },
+    ];
+    expect(bulkConfirmable(facts).map((f) => f.id)).toEqual(["a"]);
   });
 });

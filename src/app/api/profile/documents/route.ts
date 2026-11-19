@@ -30,10 +30,12 @@ export async function POST(request: Request) {
   if (contentLength > MAX_CV_BYTES + 64 * 1024) return fail("too_large", 413);
 
   let file: File | null = null;
+  let documentKind: "cv" | "linkedin_profile" = "cv";
   try {
     const form = await request.formData();
     const value = form.get("file");
     file = value instanceof File ? value : null;
+    if (form.get("kind") === "linkedin_profile") documentKind = "linkedin_profile";
   } catch {
     return fail("generic", 400);
   }
@@ -70,6 +72,7 @@ export async function POST(request: Request) {
       storage_path: storagePath,
       original_filename: validation.safeName,
       file_type: validation.fileType,
+      document_kind: documentKind,
       size_bytes: bytes.length,
       checksum,
     })
@@ -81,6 +84,7 @@ export async function POST(request: Request) {
   }
   await audit(ctx, "document.uploaded", "candidate_document", doc.id, {
     file_type: validation.fileType,
+    document_kind: documentKind,
     size_bytes: bytes.length,
   });
 

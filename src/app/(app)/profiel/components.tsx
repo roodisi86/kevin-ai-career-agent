@@ -8,6 +8,7 @@ import type { CandidateFactRow, FactCategory } from "@/lib/supabase/database.typ
 import {
   addFact,
   confirmFact,
+  setAutoAnalysis,
   rejectFact,
   suggestFactsFromDocument,
   updateBasics,
@@ -34,12 +35,15 @@ function ErrorText({ code }: { code?: string }) {
 
 // ---------------------------------------------------------------------------
 
-export function UploadForm() {
+export function UploadForm({ autoAnalyse }: { autoAnalyse: boolean }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [state, setState] = useState<{ status: "idle" | "uploading" | "done" | "error"; code?: string }>({
-    status: "idle",
-  });
+  const [kind, setKind] = useState<"cv" | "linkedin_profile">("cv");
+  const [state, setState] = useState<{
+    status: "idle" | "uploading" | "analysing" | "done" | "error";
+    code?: string;
+    result?: string;
+  }>({ status: "idle" });
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -48,25 +52,67 @@ export function UploadForm() {
     setState({ status: "uploading" });
     const body = new FormData();
     body.append("file", file);
+    body.append("kind", kind);
     try {
       const response = await fetch("/api/profile/documents", { method: "POST", body });
-      const json = (await response.json()) as { ok: boolean; error?: string };
+      const json = (await response.json()) as { ok: boolean; error?: string; documentId?: string; extracted?: boolean };
       if (!response.ok || !json.ok) {
         setState({ status: "error", code: json.error ?? "generic" });
         return;
       }
-      setState({ status: "done" });
       if (inputRef.current) inputRef.current.value = "";
       router.refresh();
+
+      if (autoAnalyse && json.extracted && json.documentId) {
+        setState({ status: "analysing" });
+        const form = new FormData();
+        form.append("id", json.documentId);
+        const ai = await suggestFactsFromDocument({ ok: false, message: null }, form);
+        if (ai.ok && ai.message) {
+          const [kept, dropped, summary] = ai.message.split("|").map(Number);
+          setState({ status: "done", result: t.profile.ai.result(kept, dropped, summary === 1) });
+        } else {
+          setState({ status: "error", code: ai.code ?? "generic" });
+        }
+        router.refresh();
+        return;
+      }
+      setState({ status: "done" });
     } catch {
       setState({ status: "error", code: "generic" });
     }
   }
 
-  const errors = t.profile.upload.errors as Record<string, string>;
+  const errors: Record<string, string> = {
+    ...(t.profile.upload.errors as Record<string, string>),
+    ...(t.profile.ai.failed as Record<string, string>),
+    not_configured: t.profile.ai.notConfigured,
+    cap_reached: t.profile.ai.capReached,
+  };
+  const busy = state.status === "uploading" || state.status === "analysing";
 
   return (
     <form onSubmit={onSubmit} className="space-y-3" aria-describedby="upload-help">
+      <fieldset>
+        <legend className="label">{t.profile.upload.kindLegend}</legend>
+        <div className="flex flex-wrap gap-4 text-sm">
+          <label className="flex items-center gap-1.5">
+            <input type="radio" name="kind" value="cv" checked={kind === "cv"} onChange={() => setKind("cv")} />
+            {t.profile.upload.kindCv}
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input
+              type="radio"
+              name="kind"
+              value="linkedin_profile"
+              checked={kind === "linkedin_profile"}
+              onChange={() => setKind("linkedin_profile")}
+            />
+            {t.profile.upload.kindLinkedin}
+          </label>
+        </div>
+        {kind === "linkedin_profile" && <p className="help">{t.profile.upload.linkedinHelp}</p>}
+      </fieldset>
       <div>
         <label htmlFor="cv-file" className="label">
           {t.profile.upload.choose}
@@ -84,11 +130,19 @@ export function UploadForm() {
           {t.profile.upload.help}
         </p>
       </div>
-      <button type="submit" className="btn-primary" disabled={state.status === "uploading"}>
-        {state.status === "uploading" ? t.profile.upload.uploading : t.profile.upload.submit}
+      <button type="submit" className="btn-primary" disabled={busy}>
+        {state.status === "uploading"
+          ? t.profile.upload.uploading
+          : state.status === "analysing"
+            ? t.profile.upload.autoRunning
+            : t.profile.upload.submit}
       </button>
       <div aria-live="polite">
-        {state.status === "done" && <p className="text-sm text-teal-700">{t.profile.upload.done}</p>}
+        {state.status === "done" && (
+          <p className="text-sm text-teal-700">
+            {t.profile.upload.done} {state.result ?? ""}
+          </p>
+        )}
         {state.status === "error" && (
           <p role="alert" className="text-sm text-rose-800">
             {errors[state.code ?? "generic"] ?? errors.generic}
@@ -323,6 +377,32 @@ export function ConfirmDeleteButton({
       <button type="button" className="btn-secondary" onClick={() => setArmed(false)}>
         {t.common.cancel}
       </button>
+    </form>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
+export function AutoAnalysisToggle({ enabled }: { enabled: boolean }) {
+  const [checked, setChecked] = useState(enabled);
+  return (
+    <form action={setAutoAnalysis} className="mt-4 space-y-2 rounded-lg bg-sand-100 p-3">
+      <label className="flex items-start gap-2 text-sm font-medium">
+        <input
+          type="checkbox"
+          name="enabled"
+          className="mt-1"
+          checked={checked}
+          onChange={(e) => setChecked(e.target.checked)}
+        />
+        <span>{t.profile.upload.autoLabel}</span>
+      </label>
+      <p className="help">{t.profile.upload.autoHelp}</p>
+      {checked !== enabled && (
+        <button type="submit" className="btn-secondary">
+          {t.profile.upload.autoSave}
+        </button>
+      )}
     </form>
   );
 }
