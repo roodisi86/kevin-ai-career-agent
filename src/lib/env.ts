@@ -14,6 +14,8 @@ const serverSchema = z.object({
   ANTHROPIC_API_KEY: z.string().min(10).optional(),
   ANTHROPIC_MODEL: z.string().min(3).default("claude-sonnet-5-5"),
   AI_DAILY_REQUEST_CAP: z.coerce.number().int().positive().default(50),
+  // Separate cap for job matching: one request per vacancy.
+  AI_DAILY_MATCH_CAP: z.coerce.number().int().positive().default(150),
 });
 
 export type PublicEnv = z.infer<typeof publicSchema>;
@@ -41,6 +43,7 @@ export function getServerEnv(): ServerEnv {
     ANTHROPIC_API_KEY: emptyToUndefined(process.env.ANTHROPIC_API_KEY),
     ANTHROPIC_MODEL: emptyToUndefined(process.env.ANTHROPIC_MODEL),
     AI_DAILY_REQUEST_CAP: emptyToUndefined(process.env.AI_DAILY_REQUEST_CAP),
+    AI_DAILY_MATCH_CAP: emptyToUndefined(process.env.AI_DAILY_MATCH_CAP),
   });
 }
 

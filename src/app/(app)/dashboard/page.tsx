@@ -17,11 +17,22 @@ export default async function DashboardPage() {
   const { preferences, isDefault } = parseStoredPreferences(data.preferences?.preferences_json);
   const aiConfigured = isAiConfigured();
   const supabase = await createSupabaseServerClient();
-  const [{ data: lastScan }, { count: activeJobs }, { count: reviewJobs }, { count: interestingJobs }] = await Promise.all([
+  const [
+    { data: lastScan },
+    { count: activeJobs },
+    { count: reviewJobs },
+    { count: interestingJobs },
+    { count: topMatches },
+    { count: stretchMatches },
+    { data: assessment },
+  ] = await Promise.all([
     supabase.from("scans").select("started_at, status").eq("tenant_id", ctx.tenantId).order("started_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("jobs").select("id", { count: "exact", head: true }).eq("tenant_id", ctx.tenantId).neq("status", "closed").is("duplicate_of", null).neq("gate_status", "fail"),
     supabase.from("jobs").select("id", { count: "exact", head: true }).eq("tenant_id", ctx.tenantId).neq("status", "closed").is("duplicate_of", null).eq("gate_status", "review_required"),
     supabase.from("jobs").select("id", { count: "exact", head: true }).eq("tenant_id", ctx.tenantId).eq("user_state", "interesting"),
+    supabase.from("job_matches").select("id", { count: "exact", head: true }).eq("tenant_id", ctx.tenantId).eq("classification", "top_match"),
+    supabase.from("job_matches").select("id", { count: "exact", head: true }).eq("tenant_id", ctx.tenantId).eq("classification", "stretch"),
+    supabase.from("candidate_assessments").select("completed_at").eq("candidate_id", ctx.candidateId).maybeSingle(),
   ]);
 
   const activeTracks = preferences.tracks.filter((tr) => tr.enabled).map((tr) => t.preferences.tracks[tr.id]);
@@ -36,8 +47,12 @@ export default async function DashboardPage() {
     nextStep = { text: t.dashboard.nextStepReview, href: "/profiel", label: t.nav.profile };
   } else if (isDefault) {
     nextStep = { text: t.dashboard.nextStepPreferences, href: "/voorkeuren", label: t.nav.preferences };
+  } else if (!assessment?.completed_at) {
+    nextStep = { text: t.dashboard.nextStepAssessment, href: "/loopbaanprofiel", label: t.nav.assessment };
+  } else if ((topMatches ?? 0) + (stretchMatches ?? 0) === 0) {
+    nextStep = { text: t.dashboard.nextStepMatch, href: "/vacatures", label: t.nav.jobs };
   } else {
-    nextStep = { text: t.dashboard.nextStepDone, href: "/profiel", label: t.nav.profile };
+    nextStep = { text: t.dashboard.nextStepDone, href: "/vacatures", label: t.nav.jobs };
   }
 
   return (
@@ -123,6 +138,9 @@ export default async function DashboardPage() {
               </p>
               <p className="mt-1 text-sm" data-testid="scanner-stats">
                 {t.dashboard.scannerStats(activeJobs ?? 0, reviewJobs ?? 0, interestingJobs ?? 0)}
+              </p>
+              <p className="mt-1 text-sm" data-testid="match-stats">
+                {t.dashboard.matchStats(topMatches ?? 0, stretchMatches ?? 0)}
               </p>
             </>
           ) : (

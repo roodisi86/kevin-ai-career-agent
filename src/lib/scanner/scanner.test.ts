@@ -270,6 +270,68 @@ describe("title relevance", () => {
     expect(titleTrackHits("Engineering Manager, Payments", prefs).hits).toHaveLength(0);
     expect(isNegativeTitle("Junior Accountmanager binnendienst", prefs)).not.toBeNull();
   });
+
+  it("drops operational, assistant and agency postings seen in real scans", async () => {
+    const { assessRelevance } = await import("./relevance");
+    const prefs = defaultPreferences();
+    const posting = (title: string, companyName = "DEMO Foods"): RawPosting => ({
+      externalId: title,
+      title,
+      companyName,
+      url: "https://example.com/job",
+      descriptionText: null,
+      descriptionTruncated: true,
+      locationText: "Amsterdam, Netherlands",
+      countryCode: "nl",
+      workplaceType: "unknown",
+      employmentType: null,
+      publishedAt: null,
+      salary: null,
+    });
+    for (const title of [
+      "Assistent Restaurant General Manager",
+      "Deputy General Manager",
+      "Senior General Manager - Restaurant",
+      "Head of Inside Sales & Pricing",
+      "Store Manager Amsterdam",
+    ]) {
+      expect(assessRelevance(posting(title), prefs).relevant, title).toBe(false);
+    }
+    expect(assessRelevance(posting("General Manager", "The Hospitality Recruiters"), prefs).relevant).toBe(false);
+    expect(assessRelevance(posting("Country Manager Benelux", "DEMO Foods"), prefs).relevant).toBe(true);
+    expect(assessRelevance(posting("Commercieel Manager"), prefs).relevant).toBe(true);
+
+    // Minimum level "director" removes manager-level titles but keeps Head of / GM.
+    const strict: Preferences = { ...prefs, minimumSeniority: "director" };
+    expect(assessRelevance(posting("Commercieel Manager"), strict).relevant).toBe(false);
+    expect(assessRelevance(posting("Head of Partnerships Europe"), strict).relevant).toBe(true);
+    expect(assessRelevance(posting("General Manager Benelux"), strict).relevant).toBe(true);
+
+    // Agencies can be allowed again.
+    const agenciesOk: Preferences = { ...prefs, excludeRecruitmentAgencies: false };
+    expect(assessRelevance(posting("General Manager", "The Hospitality Recruiters"), agenciesOk).relevant).toBe(true);
+  });
+
+  it("older stored preferences without the new fields get safe defaults", async () => {
+    const { parseStoredPreferences } = await import("@/lib/preferences/schema");
+    const legacy: Record<string, unknown> = { ...defaultPreferences() };
+    delete legacy.excludedTitleTerms;
+    delete legacy.excludeRecruitmentAgencies;
+    delete legacy.minimumSeniority;
+    const { preferences, isDefault } = parseStoredPreferences(legacy);
+    expect(isDefault).toBe(false);
+    expect(preferences.minimumSeniority).toBe("manager");
+    expect(preferences.excludedTitleTerms).toContain("restaurant");
+    expect(preferences.excludeRecruitmentAgencies).toBe(true);
+  });
+
+  it("refilters stored jobs but never manual imports", async () => {
+    const { refilterReason } = await import("./process");
+    const prefs = defaultPreferences();
+    const job = { title: "Deputy General Manager", company_name: "DEMO Hotel", location_text: "Amsterdam", country_code: "nl", workplace_type: "onsite" as const };
+    expect(refilterReason(prefs, { ...job, provider: "adzuna" })).toMatch(/deputy/);
+    expect(refilterReason(prefs, { ...job, provider: "manual" })).toBeNull();
+  });
 });
 
 describe("job lifecycle", () => {

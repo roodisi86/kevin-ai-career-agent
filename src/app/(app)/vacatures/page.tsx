@@ -4,8 +4,13 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SOURCE_LABELS, type JobListRow } from "@/lib/scanner/service";
 import { trackIds, type TrackId } from "@/lib/preferences/schema";
 import { formatDateTime } from "@/lib/time";
+import { getServerEnv, isAiConfigured } from "@/lib/env";
+import { pendingMatchJobIds } from "@/lib/matching/service";
+import type { MatchResult } from "@/lib/ai/match";
+import type { JobMatchRow, MatchFeedbackRow } from "@/lib/supabase/database.types";
 import { setJobState } from "./actions";
 import { ImportForm, ScanPanel } from "./components";
+import { FeedbackControl, MatchPanel } from "./match-components";
 
 const t = getDictionary();
 
@@ -35,7 +40,139 @@ function formatSalary(salary: Record<string, unknown>): string | null {
   return `${String(salary.currency ?? "")} ${range}${interval}${salary.source === "text" ? " (uit tekst)" : ""}`.trim();
 }
 
-function JobCard({ job, duplicates }: { job: JobListRow; duplicates: JobListRow[] }) {
+type MatchView = Pick<JobMatchRow, "job_id" | "score" | "classification" | "limited_evidence" | "result_json" | "scored_at">;
+type FeedbackView = Pick<MatchFeedbackRow, "job_id" | "label" | "reasons" | "note">;
+
+const CLASS_STYLE = {
+  top_match: "bg-teal-600 text-white",
+  stretch: "bg-teal-100 text-teal-700",
+  research_needed: "bg-amber-100 text-amber-800",
+  reject: "bg-sand-200 text-navy-600",
+} as const;
+
+function List({ title, items }: { title: string; items: string[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div>
+      <p className="font-medium">{title}</p>
+      <ul className="ml-5 list-disc text-navy-800">
+        {items.map((item, i) => (
+          <li key={i}>{item}</li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function MatchBlock({ match, feedback, jobId }: { match: MatchView | undefined; feedback: FeedbackView | undefined; jobId: string }) {
+  const mt = t.jobs.match;
+  if (!match) {
+    return <p className="text-sm text-navy-600">{mt.notScored}</p>;
+  }
+  const r = match.result_json as unknown as MatchResult;
+  const removed = r.dropped ? r.dropped.quotes + r.dropped.claims + r.dropped.texts : 0;
+  return (
+    <div className="space-y-3 rounded-lg bg-sand-50 p-3" data-testid="match">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-2xl font-semibold" aria-label={`${mt.scoreLabel}: ${match.score}`}>
+          {match.score}
+          <span className="text-sm font-normal text-navy-600">/100</span>
+        </span>
+        <span className={`badge ${CLASS_STYLE[match.classification]}`}>{mt.classification[match.classification]}</span>
+        {match.limited_evidence && <span className="badge bg-amber-100 text-amber-800">{mt.limited}</span>}
+        {feedback && <span className="badge bg-navy-800 text-white">{mt.feedbackGiven[feedback.label]}</span>}
+      </div>
+      {r.fitSummary && <p className="text-sm text-navy-800">{r.fitSummary}</p>}
+      <details>
+        <summary className="cursor-pointer text-sm font-medium">{mt.details}</summary>
+        <div className="mt-3 space-y-4 text-sm">
+          <table className="w-full text-left">
+            <tbody>
+              {r.dimensions.map((d) => (
+                <tr key={d.key} className="border-t border-sand-200 align-top">
+                  <th scope="row" className="py-2 pr-3 font-medium">
+                    {mt.dimensions[d.key]}
+                    <span className="block text-xs font-normal text-navy-600">{mt.weight(d.weight)}</span>
+                  </th>
+                  <td className="py-2 pr-3 whitespace-nowrap">
+                    <span aria-label={`${d.rating} van 5`}>{"●".repeat(d.rating)}{"○".repeat(5 - d.rating)}</span>
+                    {d.modelRating !== undefined && <span className="block text-xs text-amber-800">{mt.lowered(d.modelRating)}</span>}
+                  </td>
+                  <td className="py-2">
+                    {d.note && <p>{d.note}</p>}
+                    {d.jobQuotes.length > 0 && (
+                      <p className="text-xs text-navy-600">
+                        {mt.fromJob}: {d.jobQuotes.map((q) => `“${q}”`).join(" · ")}
+                      </p>
+                    )}
+                    {d.facts.length > 0 && (
+                      <p className="text-xs text-navy-600">
+                        {mt.fromProfile}: {d.facts.map((f) => f.statement).join(" · ")}
+                      </p>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {r.confirmedFit.length > 0 && (
+            <div>
+              <p className="font-medium">{mt.confirmedFit}</p>
+              <ul className="ml-5 list-disc">
+                {r.confirmedFit.map((c, i) => (
+                  <li key={i}>
+                    {c.claim} <span className="text-xs text-navy-600">({c.facts.map((f) => f.statement).join("; ")})</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {r.transferable.length > 0 && (
+            <div>
+              <p className="font-medium">{mt.transferable}</p>
+              <ul className="ml-5 list-disc">
+                {r.transferable.map((c, i) => (
+                  <li key={i}>
+                    {c.claim} <span className="text-xs text-navy-600">({c.facts.map((f) => f.statement).join("; ")})</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <List title={mt.gaps} items={r.gaps} />
+          <List title={mt.unknowns} items={r.unknowns} />
+          <List title={mt.recruiterDoubts} items={r.recruiterDoubts} />
+          {r.pitchAngle && (
+            <div>
+              <p className="font-medium">{mt.pitchAngle}</p>
+              <p className="text-navy-800">{r.pitchAngle}</p>
+            </div>
+          )}
+          <p className="text-xs text-navy-600">
+            {removed > 0 && `${mt.removed(removed)} `}
+            {mt.scoredAt}: {formatDateTime(match.scored_at)} · {mt.disclaimer}
+          </p>
+        </div>
+      </details>
+      <FeedbackControl
+        jobId={jobId}
+        current={feedback ? { label: feedback.label, reasons: feedback.reasons, note: feedback.note } : null}
+      />
+    </div>
+  );
+}
+
+function JobCard({
+  job,
+  duplicates,
+  match,
+  feedback,
+}: {
+  job: JobListRow;
+  duplicates: JobListRow[];
+  match: MatchView | undefined;
+  feedback: FeedbackView | undefined;
+}) {
   const signals = (job.signals_json ?? {}) as Record<string, { value?: string; evidence?: string } | unknown>;
   const checks = (((job.gate_json ?? {}) as { checks?: { key: string; mode: string; outcome: string; detail?: string }[] }).checks ?? []).filter(
     (c) => c.mode === "hard" && c.outcome !== "not_applicable",
@@ -58,6 +195,14 @@ function JobCard({ job, duplicates }: { job: JobListRow; duplicates: JobListRow[
           {t.jobs.card.openOriginal} ↗
         </a>
       </div>
+
+      <MatchBlock match={match} feedback={feedback} jobId={job.id} />
+
+      {job.filtered_out_reason && (
+        <p className="text-xs text-rose-800">
+          {t.jobs.filters.filteredReason}: {job.filtered_out_reason}
+        </p>
+      )}
 
       <div className="flex flex-wrap gap-2 text-xs">
         <span className={`badge ${STATUS_STYLE[job.status]}`}>
@@ -172,12 +317,13 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
   const track = one(params.track);
   const state = one(params.state);
   const q = one(params.q).slice(0, 100);
+  const viewParam = one(params.view);
 
   const supabase = await createSupabaseServerClient();
   let query = supabase
     .from("jobs")
     .select(
-      "id, provider, company_name, title, canonical_url, description_text, description_is_truncated, location_text, country_code, workplace_type, salary_json, signals_json, track_hits, gate_status, gate_json, status, status_reason, published_at, first_seen_at, last_seen_at, status_checked_at, user_state, duplicate_of",
+      "id, provider, company_name, title, canonical_url, description_text, description_is_truncated, location_text, country_code, workplace_type, salary_json, signals_json, track_hits, gate_status, gate_json, status, status_reason, published_at, first_seen_at, last_seen_at, status_checked_at, user_state, duplicate_of, filtered_out_reason",
     )
     .eq("tenant_id", ctx.tenantId)
     .order("first_seen_at", { ascending: false })
@@ -189,19 +335,43 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
   if ((trackIds as readonly string[]).includes(track)) query = query.contains("track_hits", [track]);
   if (["new", "interesting", "later", "not_relevant"].includes(state)) query = query.eq("user_state", state as "new");
   else query = query.neq("user_state", "not_relevant");
+  if (viewParam === "filtered") query = query.not("filtered_out_reason", "is", null);
+  else if (viewParam !== "all") query = query.is("filtered_out_reason", null);
 
-  const [{ data: rows }, { data: lastScan }, { count: approvedSources }] = await Promise.all([
-    query,
-    supabase.from("scans").select("*").eq("tenant_id", ctx.tenantId).order("started_at", { ascending: false }).limit(1).maybeSingle(),
-    supabase.from("job_sources").select("id", { count: "exact", head: true }).eq("tenant_id", ctx.tenantId).eq("approved", true),
-  ]);
+  const [{ data: rows }, { data: lastScan }, { count: approvedSources }, { data: matchRows }, { data: feedbackRows }, { data: assessment }, pendingInfo] =
+    await Promise.all([
+      query,
+      supabase.from("scans").select("*").eq("tenant_id", ctx.tenantId).order("started_at", { ascending: false }).limit(1).maybeSingle(),
+      supabase.from("job_sources").select("id", { count: "exact", head: true }).eq("tenant_id", ctx.tenantId).eq("approved", true),
+      supabase
+        .from("job_matches")
+        .select("job_id, score, classification, limited_evidence, result_json, scored_at")
+        .eq("tenant_id", ctx.tenantId),
+      supabase.from("match_feedback").select("job_id, label, reasons, note").eq("tenant_id", ctx.tenantId),
+      supabase.from("candidate_assessments").select("completed_at").eq("candidate_id", ctx.candidateId).maybeSingle(),
+      pendingMatchJobIds(ctx),
+    ]);
+
+  const matches = new Map((matchRows ?? []).map((row) => [row.job_id, row as MatchView]));
+  const feedbackByJob = new Map((feedbackRows ?? []).map((row) => [row.job_id, row as FeedbackView]));
+  // Default: recommended when there are assessments, otherwise everything.
+  const view = viewParam || (matches.size > 0 ? "recommended" : "all");
 
   const all = (rows ?? []) as JobListRow[];
   const needle = q.toLowerCase();
   const filtered = needle
     ? all.filter((j) => j.title.toLowerCase().includes(needle) || j.company_name.toLowerCase().includes(needle))
     : all;
-  const primaries = filtered.filter((j) => !j.duplicate_of);
+  const inView = (j: JobListRow) => {
+    const match = matches.get(j.id);
+    if (view === "recommended") return Boolean(match && match.classification !== "reject");
+    if (view === "unscored") return !match;
+    if (view === "rejected") return match?.classification === "reject";
+    return true;
+  };
+  const primaries = filtered
+    .filter((j) => !j.duplicate_of && inView(j))
+    .sort((a, b) => (matches.get(b.id)?.score ?? -1) - (matches.get(a.id)?.score ?? -1));
   const dupesOf = new Map<string, JobListRow[]>();
   for (const j of all) if (j.duplicate_of) dupesOf.set(j.duplicate_of, [...(dupesOf.get(j.duplicate_of) ?? []), j]);
 
@@ -211,6 +381,17 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
         <h1 className="text-2xl font-semibold">{t.jobs.title}</h1>
         <p className="max-w-3xl text-sm text-navy-600">{t.jobs.intro}</p>
       </div>
+
+      <section aria-labelledby="ai-match" className="card space-y-2">
+        <h2 id="ai-match" className="font-semibold">{t.jobs.match.panelTitle}</h2>
+        <MatchPanel
+          pending={pendingInfo.pending.length}
+          total={pendingInfo.total}
+          aiConfigured={isAiConfigured()}
+          cap={getServerEnv().AI_DAILY_MATCH_CAP}
+          hasAssessment={Boolean(assessment?.completed_at)}
+        />
+      </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section aria-labelledby="scan" className="card space-y-3">
@@ -235,7 +416,17 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
         </section>
       </div>
 
-      <form className="card grid gap-3 md:grid-cols-5 md:items-end" aria-label={t.jobs.filters.title}>
+      <form className="card grid gap-3 md:grid-cols-6 md:items-end" aria-label={t.jobs.filters.title}>
+        <div>
+          <label htmlFor="f-view" className="label">{t.jobs.filters.view}</label>
+          <select id="f-view" name="view" defaultValue={view} className="input">
+            <option value="recommended">{t.jobs.filters.viewRecommended}</option>
+            <option value="unscored">{t.jobs.filters.viewUnscored}</option>
+            <option value="rejected">{t.jobs.filters.viewRejected}</option>
+            <option value="filtered">{t.jobs.filters.viewFiltered}</option>
+            <option value="all">{t.jobs.filters.viewAll}</option>
+          </select>
+        </div>
         <div>
           <label htmlFor="f-status" className="label">{t.jobs.filters.status}</label>
           <select id="f-status" name="status" defaultValue={status} className="input">
@@ -277,7 +468,7 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
           <label htmlFor="f-q" className="label">{t.jobs.filters.search}</label>
           <input id="f-q" name="q" defaultValue={q} className="input" />
         </div>
-        <div className="md:col-span-5 flex items-center gap-3">
+        <div className="md:col-span-6 flex items-center gap-3">
           <button type="submit" className="btn-secondary">{t.jobs.filters.apply}</button>
           <span className="text-sm text-navy-600">{t.jobs.filters.count(primaries.length)}</span>
         </div>
@@ -288,7 +479,13 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
       ) : (
         <ul className="space-y-4">
           {primaries.map((job) => (
-            <JobCard key={job.id} job={job} duplicates={dupesOf.get(job.id) ?? []} />
+            <JobCard
+              key={job.id}
+              job={job}
+              duplicates={dupesOf.get(job.id) ?? []}
+              match={matches.get(job.id)}
+              feedback={feedbackByJob.get(job.id)}
+            />
           ))}
         </ul>
       )}

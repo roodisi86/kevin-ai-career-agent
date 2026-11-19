@@ -11,6 +11,7 @@ const links = [
   { href: "/vacatures", label: t.nav.jobs },
   { href: "/bedrijven", label: t.nav.companies },
   { href: "/profiel", label: t.nav.profile },
+  { href: "/loopbaanprofiel", label: t.nav.assessment },
   { href: "/voorkeuren", label: t.nav.preferences },
   { href: "/instellingen", label: t.nav.settings },
 ];

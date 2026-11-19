@@ -16,7 +16,7 @@ export async function GET() {
   }
 
   const supabase = await createSupabaseServerClient();
-  const [tenant, profile, documents, facts, preferences, consents, auditEvents] = await Promise.all([
+  const [tenant, profile, documents, facts, preferences, consents, auditEvents, assessment, matches, feedback] = await Promise.all([
     supabase.from("tenants").select("id, name, is_demo, created_at").eq("id", ctx.tenantId).single(),
     supabase.from("candidate_profiles").select("*").eq("id", ctx.candidateId).single(),
     supabase
@@ -29,16 +29,21 @@ export async function GET() {
     supabase.from("candidate_preferences").select("*").eq("candidate_id", ctx.candidateId).maybeSingle(),
     supabase.from("consent_records").select("*").eq("candidate_id", ctx.candidateId),
     supabase.from("audit_events").select("*").eq("tenant_id", ctx.tenantId).order("occurred_at", { ascending: false }),
+    supabase.from("candidate_assessments").select("*").eq("candidate_id", ctx.candidateId).maybeSingle(),
+    supabase.from("job_matches").select("*").eq("tenant_id", ctx.tenantId),
+    supabase.from("match_feedback").select("*").eq("tenant_id", ctx.tenantId),
   ]);
 
-  const failed = [tenant, profile, documents, facts, preferences, consents, auditEvents].some((r) => r.error);
+  const failed = [tenant, profile, documents, facts, preferences, consents, auditEvents, assessment, matches, feedback].some(
+    (r) => r.error,
+  );
   if (failed) return NextResponse.json({ error: "export_failed" }, { status: 500 });
 
   await audit(ctx, "data.exported", "tenant", ctx.tenantId, { documents: documents.data?.length ?? 0 });
 
   const body = {
     exported_at: new Date().toISOString(),
-    format_version: 1,
+    format_version: 2,
     note: "Original CV files are not embedded; download them individually from Mijn profiel.",
     tenant: tenant.data,
     profile: profile.data,
@@ -46,6 +51,9 @@ export async function GET() {
     facts: facts.data,
     preferences: preferences.data,
     consents: consents.data,
+    career_assessment: assessment.data,
+    job_matches: matches.data,
+    match_feedback: feedback.data,
     audit_events: auditEvents.data,
   };
 

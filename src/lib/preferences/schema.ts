@@ -26,6 +26,34 @@ export const sectorPriorities = ["boost", "neutral", "lower", "exclude"] as cons
 export const SectorPriority = z.enum(sectorPriorities);
 export type SectorPriority = z.infer<typeof SectorPriority>;
 
+export const seniorityLevels = ["manager", "director", "executive"] as const;
+export const SeniorityLevel = z.enum(seniorityLevels);
+export type SeniorityLevel = z.infer<typeof SeniorityLevel>;
+
+/**
+ * Title words that mark operational, site-level or assistant roles rather
+ * than corporate leadership. Editable defaults (a user setting, not a rule).
+ */
+export const DEFAULT_EXCLUDED_TITLE_TERMS = [
+  "assistant",
+  "assistent",
+  "deputy",
+  "adjunct",
+  "plaatsvervangend",
+  "restaurant",
+  "store",
+  "winkel",
+  "filiaal",
+  "shop",
+  "shift",
+  "kitchen",
+  "keuken",
+  "supervisor",
+  "teamleider",
+  "team leader",
+  "inside sales",
+];
+
 export const constraintKeys = ["dutchContract", "multinational", "companyCar", "remoteHybrid"] as const;
 export type ConstraintKey = (typeof constraintKeys)[number];
 
@@ -73,6 +101,10 @@ export const PreferencesSchema = z.object({
     .array(z.object({ name: shortText, aliases: uniqueStrings(10) }))
     .max(200),
   negativeRoleSignals: uniqueStrings(40),
+  // Added after the first release: defaults keep older stored preferences valid.
+  excludedTitleTerms: uniqueStrings(80).default(DEFAULT_EXCLUDED_TITLE_TERMS),
+  excludeRecruitmentAgencies: z.boolean().default(true),
+  minimumSeniority: SeniorityLevel.default("manager"),
   earliestStartDate: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/)
@@ -131,6 +163,9 @@ export function defaultPreferences(): Preferences {
     sectors: [],
     excludedEmployers: [],
     negativeRoleSignals: ["SDR", "BDR", "Account Executive", "100% new business", "quota-carrying hunter"],
+    excludedTitleTerms: [...DEFAULT_EXCLUDED_TITLE_TERMS],
+    excludeRecruitmentAgencies: true,
+    minimumSeniority: "manager",
     earliestStartDate: null,
   };
 }

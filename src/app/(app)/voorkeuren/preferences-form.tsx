@@ -6,6 +6,7 @@ import {
   constraintKeys,
   constraintModes,
   sectorPriorities,
+  seniorityLevels,
   type ConstraintMode,
   type Preferences,
   type SectorPriority,
@@ -60,6 +61,7 @@ export function PreferencesForm({ initial }: { initial: Preferences }) {
   );
   const [locationsText, setLocationsText] = useState(initial.locations.preferred.join("\n"));
   const [negativeText, setNegativeText] = useState(initial.negativeRoleSignals.join("\n"));
+  const [excludedTitleText, setExcludedTitleText] = useState(initial.excludedTitleTerms.join("\n"));
   const [aliasText, setAliasText] = useState(() => initial.excludedEmployers.map((e) => e.aliases.join(", ")));
   const [newSector, setNewSector] = useState("");
   const [newEmployer, setNewEmployer] = useState("");
@@ -75,6 +77,7 @@ export function PreferencesForm({ initial }: { initial: Preferences }) {
     tracks: prefs.tracks.map((tr) => ({ ...tr, titles: lines(titlesText[tr.id] ?? "") })),
     locations: { ...prefs.locations, preferred: lines(locationsText) },
     negativeRoleSignals: lines(negativeText),
+    excludedTitleTerms: lines(excludedTitleText),
     excludedEmployers: prefs.excludedEmployers.map((e, i) => ({
       name: e.name,
       aliases: (aliasText[i] ?? "")
@@ -401,6 +404,52 @@ export function PreferencesForm({ initial }: { initial: Preferences }) {
           value={negativeText}
           onChange={(e) => setNegativeText(e.target.value)}
         />
+      </section>
+
+      <section aria-labelledby="title-filter" className="card space-y-4">
+        <h2 id="title-filter" className="font-semibold">
+          {t.preferences.titleFilterTitle}
+        </h2>
+        <div>
+          <label htmlFor="min-seniority" className="label">
+            {t.preferences.minimumSeniority}
+          </label>
+          <select
+            id="min-seniority"
+            className="input max-w-md"
+            value={prefs.minimumSeniority}
+            onChange={(e) => setPrefs((p) => ({ ...p, minimumSeniority: e.target.value as Preferences["minimumSeniority"] }))}
+          >
+            {seniorityLevels.map((level) => (
+              <option key={level} value={level}>
+                {t.preferences.seniorityOptions[level]}
+              </option>
+            ))}
+          </select>
+          <p className="help">{t.preferences.minimumSeniorityHelp}</p>
+        </div>
+        <label className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            checked={prefs.excludeRecruitmentAgencies}
+            onChange={(e) => setPrefs((p) => ({ ...p, excludeRecruitmentAgencies: e.target.checked }))}
+          />
+          {t.preferences.excludeAgencies}
+        </label>
+        <p className="help">{t.preferences.excludeAgenciesHelp}</p>
+        <div>
+          <label htmlFor="excluded-title-terms" className="label">
+            {t.preferences.excludedTitleTerms}
+          </label>
+          <textarea
+            id="excluded-title-terms"
+            rows={6}
+            className="input"
+            value={excludedTitleText}
+            onChange={(e) => setExcludedTitleText(e.target.value)}
+          />
+          <p className="help">{t.preferences.excludedTitleTermsHelp}</p>
+        </div>
       </section>
 
       <div className="sticky bottom-0 flex flex-wrap items-center gap-3 border-t border-sand-200 bg-sand-50/95 py-3">

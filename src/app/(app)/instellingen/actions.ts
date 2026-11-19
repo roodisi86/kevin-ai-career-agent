@@ -51,6 +51,8 @@ export async function deleteAllCandidateData(_prev: DeleteState, formData: FormD
   const docDelete = await supabase.from("candidate_documents").delete().eq("candidate_id", ctx.candidateId);
   // Search activity is personal too: jobs, sources and target companies.
   const scannerResults = await Promise.all([
+    // Matches and feedback cascade with the jobs; the assessment goes explicitly.
+    supabase.from("candidate_assessments").delete().eq("candidate_id", ctx.candidateId),
     supabase.from("jobs").delete().eq("tenant_id", ctx.tenantId),
     supabase.from("job_sources").delete().eq("tenant_id", ctx.tenantId),
     supabase.from("company_targets").delete().eq("tenant_id", ctx.tenantId),

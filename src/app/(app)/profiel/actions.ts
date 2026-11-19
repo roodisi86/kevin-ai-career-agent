@@ -288,7 +288,10 @@ export async function suggestFactsFromDocument(_prev: ActionState, formData: For
 
   // The proposed headline/summary is stored next to (not over) the user's own
   // text and only used after explicit acceptance.
-  const summaryCheck = verifyProfileSummary(result.profileSummary, doc.extracted_text);
+  const summaryCheck =
+    doc.document_kind === "assessment"
+      ? ({ ok: false, reason: "empty" } as const)
+      : verifyProfileSummary(result.profileSummary, doc.extracted_text);
   if (summaryCheck.ok) {
     await supabase
       .from("candidate_profiles")

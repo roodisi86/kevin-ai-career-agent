@@ -1,5 +1,5 @@
 import { canonicalWords } from "@/lib/cv/text";
-import type { Preferences, TrackId } from "@/lib/preferences/schema";
+import type { Preferences, SeniorityLevel, TrackId } from "@/lib/preferences/schema";
 import { countryFromLocation, mentionsWiderRegion } from "./geo";
 import type { RawPosting } from "./types";
 
@@ -45,7 +45,44 @@ const DOMAIN_TO_TRACK: Record<string, TrackId> = {
   ecosystem: "partnerships_market_development",
 };
 
-const TOO_JUNIOR = ["intern", "internship", "stagiair", "stage", "trainee", "junior", "werkstudent", "working student", "assistant", "graduate"];
+const TOO_JUNIOR = ["intern", "internship", "stagiair", "stage", "trainee", "junior", "werkstudent", "working student", "graduate"];
+
+/** Title words per seniority level (highest level found wins). */
+const LEVEL_WORDS: Record<SeniorityLevel, string[]> = {
+  executive: [
+    "chief", "vp", "vice president", "svp", "evp", "ceo", "coo", "cco", "cro", "cso", "cmo",
+    "managing director", "algemeen directeur", "president",
+  ],
+  director: [
+    "director", "directeur", "head", "hoofd", "general manager", "country manager", "landenmanager",
+    "chief of staff", "business unit", "vestigingsdirecteur",
+  ],
+  manager: ["manager", "lead", "leader"],
+};
+const LEVEL_RANK: Record<SeniorityLevel, number> = { manager: 1, director: 2, executive: 3 };
+
+/**
+ * Words that identify recruitment, staffing and interim agencies in a company
+ * name. Postings by agencies hide the actual employer, so exclusions,
+ * multinational status and contract cannot be checked.
+ */
+const AGENCY_PATTERNS = [
+  /\brecruit/i, /\bwerving\b/i, /\bw\s?&\s?s\b/i, /\buitzend/i, /\bstaffing\b/i, /\bheadhunt/i,
+  /\bexecutive search\b/i, /\bsearch partners?\b/i, /\bdetacher/i, /\bpersonnel\b/i, /\bpersoneel/i,
+  /\b(randstad|adecco|manpower|hays|michael page|page executive|page group|robert walters|robert half|undutchables|brunel|tempo-team|start people|luba|kelly services|harvey nash|korn ferry|spencer stuart|egon zehnder|russell reynolds|heidrick)\b/i,
+];
+
+export function isRecruitmentAgency(companyName: string): boolean {
+  return AGENCY_PATTERNS.some((p) => p.test(companyName));
+}
+
+export function titleLevel(title: string): SeniorityLevel | null {
+  const words = canonicalWords(title);
+  for (const level of ["executive", "director", "manager"] as const) {
+    if (LEVEL_WORDS[level].some((w) => has(words, w))) return level;
+  }
+  return null;
+}
 
 // "manager" alone is too broad; it only counts together with a domain word
 // that already implies leadership (e.g. "Wholesale Manager", "Channel Manager").
@@ -100,8 +137,14 @@ export function isNegativeTitle(title: string, prefs: Preferences): string | nul
   const words = canonicalWords(title);
   const negative = prefs.negativeRoleSignals.find((s) => has(words, s));
   if (negative) return `negatief rolsignaal "${negative}"`;
+  const excluded = prefs.excludedTitleTerms.find((s) => has(words, s));
+  if (excluded) return `uitgesloten titelwoord "${excluded}"`;
   const junior = TOO_JUNIOR.find((s) => has(words, s));
   if (junior) return `te junior ("${junior}")`;
+  const level = titleLevel(title);
+  if (level && LEVEL_RANK[level] < LEVEL_RANK[prefs.minimumSeniority]) {
+    return `onder je minimale niveau (${level})`;
+  }
   return null;
 }
 
@@ -126,6 +169,9 @@ export function locationAcceptable(
 }
 
 export function assessRelevance(posting: RawPosting, prefs: Preferences): Relevance {
+  if (prefs.excludeRecruitmentAgencies && isRecruitmentAgency(posting.companyName)) {
+    return { relevant: false, trackHits: [], reasons: ["geplaatst door een recruitmentbureau"], locationOk: false };
+  }
   const negative = isNegativeTitle(posting.title, prefs);
   if (negative) return { relevant: false, trackHits: [], reasons: [negative], locationOk: false };
 

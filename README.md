@@ -13,7 +13,7 @@ Private AI Job Scanner + AI Reverse Recruiter, built SaaS-ready (multi-tenant sc
 | 0 — Foundation | Next.js 16 + strict TS, Supabase Auth, protected dashboard, tenants/memberships/profile/audit/consent with RLS, CI | ✅ |
 | 1 — Profile | Private CV upload (PDF/DOCX), text extraction, Claude fact suggestions (optional), confirmed vs suggested vs missing facts, preferences (tracks A–D, hard/soft filters, sectors, excluded employers), export + wipe | ✅ (AI path needs `ANTHROPIC_API_KEY`) |
 | 2 — Job scanner | Greenhouse, SmartRecruiters, Lever (+EU), Ashby per verified company; Jobicy (remote); Adzuna NL (key); manual import; dedupe, status lifecycle, hard gates, manual scan | ✅ (Adzuna needs key; daily schedule not yet) |
-| 3 — Explainable matching | | not started |
+| 3 — Explainable matching | Career assessment (`/loopbaanprofiel`, user-stated only) + assessment-report upload (work-style facts); tighter title filter (minimum level, excluded title words, agencies); Claude scoring on 6 weighted dimensions with verified evidence, score/classification computed in code, cache by input hash, daily cap (`AI_DAILY_MATCH_CAP`), 👍/👎 feedback as calibration | ✅ (needs `ANTHROPIC_API_KEY`) |
 | 4 — Reverse recruiter | | not started |
 
 ## Architecture
@@ -23,6 +23,7 @@ Private AI Job Scanner + AI Reverse Recruiter, built SaaS-ready (multi-tenant sc
 - **No service-role key in the app.** All data access uses the signed-in user's session, so RLS always applies.
 - **Allow-list gate.** A tenant is only created for e-mail addresses in `public.allowed_owners` (no client access). Sign-ups should also be disabled in Supabase Auth.
 - **Claude API** (optional) — CV fact suggestions with structured output, validated again with Zod. Suggestions whose evidence excerpt does not literally occur in the CV are dropped. AI suggestions can only be stored as `suggested`; confirmation is enforced by a database trigger.
+- **Matching** (`src/lib/ai/match.ts`) — Claude rates six dimensions 0–5 (25/20/20/15/10/10). The app drops job quotes that are not literally in the vacancy, fact references that are not confirmed facts, "proven" claims without a cited fact or with numbers/high-stakes terms (P&L, budget, revenue…) the cited facts do not contain, and caps 4–5 ratings without evidence at 3. Score and classification (top match / stretch / research needed / reject) are computed in code; a failed hard gate is always a reject.
 - **Audit log** — `audit_events` stores actions with safe metadata only (counts, ids, statuses; never CV text).
 
 ```

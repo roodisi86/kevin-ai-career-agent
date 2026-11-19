@@ -74,3 +74,15 @@ body {
 @utility badge {
   @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
 }
+
+@utility chip {
+  @apply inline-flex cursor-pointer items-center rounded-full border border-sand-300 bg-white px-3 py-1 text-sm text-navy-800 hover:bg-sand-100 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-teal-600;
+}
+
+@utility chip-active {
+  @apply border-navy-800 bg-navy-800 text-white hover:bg-navy-700;
+}
+
+@utility chip-negative {
+  @apply border-rose-800 bg-rose-100 text-rose-800 hover:bg-rose-100;
+}

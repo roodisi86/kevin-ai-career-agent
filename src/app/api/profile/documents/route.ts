@@ -30,12 +30,13 @@ export async function POST(request: Request) {
   if (contentLength > MAX_CV_BYTES + 64 * 1024) return fail("too_large", 413);
 
   let file: File | null = null;
-  let documentKind: "cv" | "linkedin_profile" = "cv";
+  let documentKind: "cv" | "linkedin_profile" | "assessment" = "cv";
   try {
     const form = await request.formData();
     const value = form.get("file");
     file = value instanceof File ? value : null;
     if (form.get("kind") === "linkedin_profile") documentKind = "linkedin_profile";
+    if (form.get("kind") === "assessment") documentKind = "assessment";
   } catch {
     return fail("generic", 400);
   }

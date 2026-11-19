@@ -56,6 +56,19 @@ test("login → upload CV → confirm a fact → preferences → export → wipe
   await expect(page.getByRole("group", { name: "Leaseauto" }).getByLabel("Hard")).toBeChecked();
   await expect(page.getByText("London Stock Exchange Group", { exact: true })).toBeVisible();
 
+  // Career assessment: answers are saved and come back after a reload.
+  await page.goto("/loopbaanprofiel");
+  await page.getByLabel("Partnerships en allianties opbouwen: Energie").locator("..").click();
+  await page.getByLabel("Koude acquisitie en prospecting: Kost energie").locator("..").click();
+  await page.getByRole("group", { name: "Hoe groot moet je team idealiter zijn?" }).getByText("6–15").click();
+  await page.getByLabel("Beschrijf je ideale volgende rol in een paar zinnen").fill("DEMO: landenrol met partners en distributeurs.");
+  await expect(page.getByText(/^4 van \d+ vragen beantwoord$/)).toBeVisible();
+  await page.getByRole("button", { name: "Opslaan" }).click();
+  await expect(page.getByText(/Loopbaanprofiel opgeslagen/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Partnerships en allianties opbouwen: Energie")).toBeChecked();
+  await expect(page.getByLabel("Beschrijf je ideale volgende rol in een paar zinnen")).toHaveValue("DEMO: landenrol met partners en distributeurs.");
+
   // Manual job import (no external calls): stored as "uncertain", can be marked.
   await page.goto("/vacatures");
   await page.getByText("Vacature handmatig toevoegen").click();
@@ -71,6 +84,10 @@ test("login → upload CV → confirm a fact → preferences → export → wipe
   await expect(job).toHaveCount(1);
   await expect(job.getByText(/handmatig toegevoegd/)).toBeVisible();
   await expect(job.getByText("Valt af op harde eis")).toHaveCount(0);
+  // Without an AI key the matching degrades gracefully: clear message, job not scored.
+  await expect(page.getByText(/AI is niet ingesteld/).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: /met AI/ })).toBeDisabled();
+  await expect(job.getByText("Nog niet beoordeeld")).toBeVisible();
   await job.getByRole("button", { name: "Interessant" }).click();
   await expect(page.getByTestId("job").filter({ hasText: "DEMO Country Manager Benelux" }).getByRole("button", { name: "Interessant" })).toHaveAttribute("aria-pressed", "true");
 
@@ -91,6 +108,7 @@ test("login → upload CV → confirm a fact → preferences → export → wipe
   expect(exported.documents).toHaveLength(1);
   expect(exported.facts).toHaveLength(1);
   expect(exported.preferences.preferences_json.constraints.companyCar).toBe("hard");
+  expect(exported.career_assessment.answers_json.teamSize).toBe("6_15");
 
   // Wipe everything and verify it is gone.
   await page.getByLabel("Typ VERWIJDER om te bevestigen").fill("VERWIJDER");

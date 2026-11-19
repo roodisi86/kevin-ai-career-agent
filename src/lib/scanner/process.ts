@@ -39,6 +39,7 @@ export interface JobRecord {
   published_at: string | null;
   raw_hash: string;
   dedupe_key: string;
+  filtered_out_reason: string | null;
 }
 
 export function dedupeKey(companyName: string, title: string, country: string | null): string {
@@ -125,6 +126,7 @@ export function toJobRecord(
       published_at: posting.publishedAt,
       raw_hash: rawHash(posting),
       dedupe_key: dedupeKey(companyName, posting.title, country),
+      filtered_out_reason: null,
     },
   };
 }
@@ -196,4 +198,40 @@ export function regate(
     annualBaseSalaryEur: typeof salary.annualEur === "number" ? salary.annualEur : null,
     sector: typeof signals.sector === "string" ? signals.sector : null,
   });
+}
+
+export interface StoredJobForRefilter {
+  provider: JobProvider;
+  title: string;
+  company_name: string;
+  location_text: string | null;
+  country_code: string | null;
+  workplace_type: RawPosting["workplaceType"];
+}
+
+/**
+ * Re-runs the relevance filter on a stored job (after the user tightened the
+ * filter). Returns the reason it is now filtered out, or null when it stays.
+ * Manually imported jobs are never filtered: the user chose them.
+ */
+export function refilterReason(prefs: Preferences, job: StoredJobForRefilter): string | null {
+  if (job.provider === "manual") return null;
+  const relevance = assessRelevance(
+    {
+      externalId: "stored",
+      title: job.title,
+      companyName: job.company_name,
+      url: "https://stored.invalid",
+      locationText: job.location_text,
+      countryCode: job.country_code,
+      workplaceType: job.workplace_type,
+      employmentType: null,
+      descriptionText: null,
+      descriptionTruncated: false,
+      publishedAt: null,
+      salary: null,
+    },
+    prefs,
+  );
+  return relevance.relevant ? null : relevance.reasons.join(" · ").slice(0, 200);
 }

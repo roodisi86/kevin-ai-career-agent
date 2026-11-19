@@ -38,7 +38,7 @@ function ErrorText({ code }: { code?: string }) {
 export function UploadForm({ autoAnalyse }: { autoAnalyse: boolean }) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
-  const [kind, setKind] = useState<"cv" | "linkedin_profile">("cv");
+  const [kind, setKind] = useState<"cv" | "linkedin_profile" | "assessment">("cv");
   const [state, setState] = useState<{
     status: "idle" | "uploading" | "analysing" | "done" | "error";
     code?: string;
@@ -110,8 +110,19 @@ export function UploadForm({ autoAnalyse }: { autoAnalyse: boolean }) {
             />
             {t.profile.upload.kindLinkedin}
           </label>
+          <label className="flex items-center gap-1.5">
+            <input
+              type="radio"
+              name="kind"
+              value="assessment"
+              checked={kind === "assessment"}
+              onChange={() => setKind("assessment")}
+            />
+            {t.profile.upload.kindAssessment}
+          </label>
         </div>
         {kind === "linkedin_profile" && <p className="help">{t.profile.upload.linkedinHelp}</p>}
+        {kind === "assessment" && <p className="help">{t.profile.upload.assessmentHelp}</p>}
       </fieldset>
       <div>
         <label htmlFor="cv-file" className="label">

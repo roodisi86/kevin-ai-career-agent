@@ -9,7 +9,7 @@ import { asJson, type JobRow, type JobSourceRow } from "@/lib/supabase/database.
 import { adapters } from "./adapters";
 import { countryFromLocation } from "./geo";
 import { createFetchJson } from "./http";
-import { pickPrimary, regate, statusWhenMissing, toJobRecord, type CompanyContext } from "./process";
+import { pickPrimary, refilterReason, regate, statusWhenMissing, toJobRecord, type CompanyContext } from "./process";
 import { makeCandidateTitleFilter, searchPhrases } from "./relevance";
 import { SUGGESTED_TARGETS } from "./suggested-targets";
 import { capDescription } from "./text";
@@ -252,7 +252,9 @@ export async function finishScan(ctx: AppContext, scanId: string) {
 
   const { data: jobs } = await supabase
     .from("jobs")
-    .select("id, provider, first_seen_at, dedupe_key, duplicate_of, company_name, signals_json, salary_json, gate_status, status")
+    .select(
+      "id, provider, first_seen_at, dedupe_key, duplicate_of, company_name, title, location_text, country_code, workplace_type, signals_json, salary_json, gate_status, status, filtered_out_reason",
+    )
     .eq("tenant_id", ctx.tenantId)
     .neq("status", "closed");
 
@@ -269,10 +271,16 @@ export async function finishScan(ctx: AppContext, scanId: string) {
       const want = job.id === primary.id ? null : primary.id;
       if (want) duplicates++;
       const gate = regate(prefs, job);
-      if (job.duplicate_of !== want || job.gate_status !== gate.status) {
+      const filtered = refilterReason(prefs, job);
+      if (job.duplicate_of !== want || job.gate_status !== gate.status || job.filtered_out_reason !== filtered) {
         await supabase
           .from("jobs")
-          .update({ duplicate_of: want, gate_status: gate.status, gate_json: asJson({ checks: gate.checks }) })
+          .update({
+            duplicate_of: want,
+            gate_status: gate.status,
+            gate_json: asJson({ checks: gate.checks }),
+            filtered_out_reason: filtered,
+          })
           .eq("id", job.id);
       }
     }
@@ -463,7 +471,7 @@ export type JobListRow = Pick<
   | "id" | "provider" | "company_name" | "title" | "canonical_url" | "description_text" | "description_is_truncated"
   | "location_text" | "country_code" | "workplace_type" | "salary_json" | "signals_json" | "track_hits" | "gate_status"
   | "gate_json" | "status" | "status_reason" | "published_at" | "first_seen_at" | "last_seen_at" | "status_checked_at"
-  | "user_state" | "duplicate_of"
+  | "user_state" | "duplicate_of" | "filtered_out_reason"
 >;
 
 /** Re-applies hard gates to all active jobs (after the user changed preferences). */
@@ -472,15 +480,19 @@ export async function regateAll(ctx: AppContext): Promise<number> {
   const prefs = await loadPreferences(ctx);
   const { data: jobs } = await supabase
     .from("jobs")
-    .select("id, company_name, signals_json, salary_json, gate_status")
+    .select("id, provider, title, company_name, location_text, country_code, workplace_type, signals_json, salary_json, gate_status, filtered_out_reason")
     .eq("tenant_id", ctx.tenantId)
     .neq("status", "closed");
   let changed = 0;
   for (const job of jobs ?? []) {
     const gate = regate(prefs, job);
-    if (gate.status !== job.gate_status) {
+    const filtered = refilterReason(prefs, job);
+    if (gate.status !== job.gate_status || filtered !== job.filtered_out_reason) {
       changed++;
-      await supabase.from("jobs").update({ gate_status: gate.status, gate_json: asJson({ checks: gate.checks }) }).eq("id", job.id);
+      await supabase
+        .from("jobs")
+        .update({ gate_status: gate.status, gate_json: asJson({ checks: gate.checks }), filtered_out_reason: filtered })
+        .eq("id", job.id);
     }
   }
   return changed;
