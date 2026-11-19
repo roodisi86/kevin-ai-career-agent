@@ -216,7 +216,23 @@ export const nl = {
     progress: (answered: number, total: number) => `${answered} van ${total} vragen beantwoord`,
     saved: "Loopbaanprofiel opgeslagen. Vacatures worden bij de volgende AI-beoordeling opnieuw gescoord.",
     saveError: "Opslaan mislukt: controleer de velden.",
-    notAnswered: "Geen antwoord",
+    notAnswered: "— geen antwoord —",
+    proposedBadge: "voorstel",
+    autofillTitle: "Automatisch invullen",
+    autofillClaude:
+      "Claude heeft een voorstel gemaakt op basis van je bevestigde feiten (cv, LinkedIn) en je voorkeuren.",
+    autofillRules: "Voorstel op basis van je voorkeuren en je bevestigde feiten (zoeksporen, negatieve rolsignalen, reizen, talen).",
+    autofillButton: "Vul lege vragen automatisch in",
+    autofillDone: (n: number) => `${n} vraag/vragen ingevuld met een voorstel. Controleer ze en klik Opslaan.`,
+    autofillNothing: "Er was niets meer om in te vullen.",
+    autofillHelp:
+      "Alleen vragen die je nog niet beantwoordde worden ingevuld; jouw eigen antwoorden blijven staan. Voorstellen zijn gemarkeerd en tellen pas mee als jij opslaat.",
+    reviewBeforeSave: (n: number) => `${n} voorstel(len) nog niet gecontroleerd`,
+    scaleLabels: {
+      strategicVsOperational: ["1 – vooral operationeel", "2", "3 – in balans", "4", "5 – vooral strategisch"],
+      handsOnVsThroughOthers: ["1 – vooral zelf uitvoeren", "2", "3 – in balans", "4", "5 – vooral via anderen"],
+    },
+    officeDays: (n: number) => (n === 0 ? "0 – volledig remote" : `${n} dag(en)`),
     externalTitle: "Bestaand assessment-rapport",
     externalBody:
       "Heb je een rapport van Harrison Assessment, DISC, Insights, Hogan of een loopbaancoach? Upload het op Mijn profiel als soort document 'Assessment-rapport'. Claude stelt dan werkstijl-feiten voor met een letterlijk citaat uit het rapport; jij bevestigt welke kloppen.",

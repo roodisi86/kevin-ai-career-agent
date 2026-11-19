@@ -222,6 +222,9 @@ export type CandidateAssessmentRow = {
   candidate_id: string;
   schema_version: number;
   answers_json: Json;
+  suggested_answers_json: Json | null;
+  suggestion_source: "claude" | "rules" | null;
+  suggestion_created_at: string | null;
   completed_at: string | null;
   created_at: string;
   updated_at: string;

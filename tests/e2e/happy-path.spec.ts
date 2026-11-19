@@ -58,18 +58,23 @@ test("login → upload CV → confirm a fact → preferences → export → wipe
   await expect(page.getByRole("group", { name: "Leaseauto" }).getByLabel("Hard")).toBeChecked();
   await expect(page.getByText("London Stock Exchange Group", { exact: true })).toBeVisible();
 
-  // Career assessment: answers are saved and come back after a reload.
+  // Career assessment: dropdowns, automatic proposal for empty questions, saved after review.
   await page.goto("/loopbaanprofiel");
-  await page.getByLabel("Partnerships en allianties opbouwen: Energie").locator("..").click();
-  await page.getByLabel("Koude acquisitie en prospecting: Kost energie").locator("..").click();
-  await page.getByRole("group", { name: "Hoe groot moet je team idealiter zijn?" }).getByText("6–15").click();
+  await page.getByLabel("Koude acquisitie en prospecting").selectOption({ label: "Kost energie" });
+  await page.getByLabel("Hoe groot moet je team idealiter zijn?").selectOption({ label: "6–15" });
   await page.getByLabel("Beschrijf je ideale volgende rol in een paar zinnen").fill("DEMO: landenrol met partners en distributeurs.");
-  await expect(page.getByText(/^4 van \d+ vragen beantwoord$/)).toBeVisible();
+  await expect(page.getByText(/^3 van \d+ vragen beantwoord$/)).toBeVisible();
+  await page.getByRole("button", { name: "Vul lege vragen automatisch in" }).click();
+  await expect(page.getByText(/ingevuld met een voorstel/)).toBeVisible();
+  // Own answers are kept; empty ones get a marked proposal.
+  await expect(page.getByLabel("Beschrijf je ideale volgende rol in een paar zinnen")).toHaveValue("DEMO: landenrol met partners en distributeurs.");
+  await expect(page.getByLabel(/Partnerships en allianties opbouwen/)).toHaveValue("energy");
+  await expect(page.getByText("voorstel", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "Opslaan" }).click();
   await expect(page.getByText(/Loopbaanprofiel opgeslagen/)).toBeVisible();
   await page.reload();
-  await expect(page.getByLabel("Partnerships en allianties opbouwen: Energie")).toBeChecked();
-  await expect(page.getByLabel("Beschrijf je ideale volgende rol in een paar zinnen")).toHaveValue("DEMO: landenrol met partners en distributeurs.");
+  await expect(page.getByLabel(/Partnerships en allianties opbouwen/)).toHaveValue("energy");
+  await expect(page.getByLabel("Hoe groot moet je team idealiter zijn?")).toHaveValue("6_15");
 
   // Manual job import (no external calls): stored as "uncertain", can be marked.
   await page.goto("/vacatures");
