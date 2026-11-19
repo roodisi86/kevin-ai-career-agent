@@ -54,6 +54,7 @@ npm run typecheck
 npm run test:unit                      # validation, extraction, anti-hallucination, preferences
 DATABASE_TEST_URL=postgres://postgres@localhost:5432/postgres npm run test:db   # RLS + cross-tenant
 npm run build && npm run test:e2e      # Playwright (smoke always; happy path needs a DEMO account)
+npm run test:hosted                    # isolation against the real Supabase API + Storage (DEMO account)
 ```
 
 `test:db` creates a throw-away database, loads `tests/db/supabase-stub.sql` (auth/storage stand-ins) and applies all migrations. Never point it at a real database.
