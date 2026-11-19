@@ -27,7 +27,13 @@ export type AuditAction =
   | "job.state_changed"
   | "assessment.saved"
   | "match.scored"
-  | "match.feedback";
+  | "match.feedback"
+  | "outreach.requested"
+  | "outreach.researched"
+  | "outreach.draft_saved"
+  | "outreach.state_changed"
+  | "outreach.contact_added"
+  | "outreach.contact_removed";
 
 type SafeMetadata = Record<string, string | number | boolean | null>;
 

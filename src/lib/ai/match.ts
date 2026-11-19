@@ -142,7 +142,7 @@ export function numbersSupported(text: string, source: string): boolean {
   return digitsOf(text).every((d) => sourceNumbers.has(d));
 }
 
-function guardedTermsSupported(text: string, source: string): boolean {
+export function guardedTermsSupported(text: string, source: string): boolean {
   return GUARDED_TERMS.every((term) => !term.test(text) || term.test(source));
 }
 

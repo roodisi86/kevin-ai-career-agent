@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { join } from "node:path";
+import { createClient } from "@supabase/supabase-js";
 
 /**
  * Happy path with a SYNTHETIC demo account (DEMO tenant, allow-listed).
@@ -97,6 +98,65 @@ test("login → upload CV → confirm a fact → preferences → export → wipe
   await expect(job.getByText(/\/100/)).toBeVisible();
   await job.getByRole("button", { name: "Interessant" }).click();
   await expect(page.getByTestId("job").filter({ hasText: "DEMO Country Manager Benelux" }).getByRole("button", { name: "Interessant" })).toHaveAttribute("aria-pressed", "true");
+
+  // Reverse recruiter: a (synthetic) research answer is verified, then the
+  // approval flow is exact-version: edit → new version → approval revoked.
+  const db = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, {
+    auth: { persistSession: false },
+  });
+  await db.auth.signInWithPassword({ email: email!, password: password! });
+  const { data: demoJob } = await db.from("jobs").select("id, tenant_id").eq("title", "DEMO Country Manager Benelux").single();
+  const { data: demoFact } = await db.from("candidate_facts").select("id").eq("status", "confirmed").limit(1).single();
+  const answer = {
+    brief: {
+      business_model: "DEMO Beverages verkoopt dranken via distributeurs.",
+      recent_news: [{ title: "DEMO-bericht", url: "https://news.example.invalid/demo", published: "2026-11-01" }],
+      strategic_challenge: "Waarschijnlijk groei in de Benelux.",
+      angles: ["Marktopening"],
+    },
+    contacts: [
+      { name: "Jane Demo", role: "VP Europe", organisation: "DEMO", source_url: "https://demo.example.invalid/team", source_type: "company_site", email: "" },
+      { name: "John Sample", role: "Recruiter", organisation: "DEMO", source_url: "https://www.linkedin.com/in/johnsample", source_type: "other", email: "" },
+    ],
+    drafts: [
+      { kind: "hiring_manager", language: "en", recipient_name: "Jane Demo", subject: "DEMO Country Manager Benelux", body: "DEMO introduction based on my confirmed experience.", fact_ids: ["F1"] },
+    ],
+    follow_up: { after_days: 7, body: "DEMO follow-up." },
+  };
+  const { error: seedError } = await db.from("outreach_requests").insert({
+    tenant_id: demoJob!.tenant_id,
+    job_id: demoJob!.id,
+    prompt_text: "DEMO",
+    fact_refs_json: { F1: demoFact!.id },
+    status: "answered",
+    output_json: answer,
+  });
+  expect(seedError).toBeNull();
+  await db.auth.signOut();
+
+  await page.goto("/reverse-recruiter");
+  await expect(page.getByText("DEMO Beverages verkoopt dranken via distributeurs.")).toBeVisible();
+  await expect(page.getByTestId("contact")).toHaveCount(1); // the LinkedIn-sourced contact was dropped
+  await expect(page.getByTestId("contact")).toContainText("Jane Demo");
+  const draft = page.getByTestId("draft").filter({ hasText: "Aan hiring manager" });
+  await expect(draft.getByTestId("draft-state")).toHaveText("Concept");
+  await expect(draft.getByRole("button", { name: "Kopiëren" })).toHaveCount(0);
+  await draft.getByRole("button", { name: "Gereviewd" }).click();
+  await expect(draft.getByTestId("draft-state")).toHaveText("Gereviewd");
+  await draft.getByRole("button", { name: "Deze versie goedkeuren" }).click();
+  await expect(draft.getByTestId("draft-state")).toHaveText("Goedgekeurd");
+  await expect(draft.getByRole("button", { name: "Kopiëren" })).toBeVisible();
+  // Editing the approved text revokes approval and creates version 2.
+  await draft.getByLabel("Bericht").fill("DEMO introduction, edited after approval.");
+  await draft.getByRole("button", { name: "Wijzigingen opslaan" }).click();
+  await expect(draft.getByTestId("draft-state")).toHaveText("Concept");
+  await expect(draft.getByText("versie 2")).toBeVisible();
+  await expect(draft.getByRole("button", { name: "Ik heb dit verstuurd" })).toHaveCount(0);
+  await draft.getByRole("button", { name: "Gereviewd" }).click();
+  await draft.getByRole("button", { name: "Deze versie goedkeuren" }).click();
+  await draft.getByRole("button", { name: "Ik heb dit verstuurd" }).click();
+  await expect(draft.getByTestId("draft-state")).toHaveText("Verstuurd");
+  await expect(draft.getByLabel("Bericht")).toBeDisabled();
 
   // Dashboard reflects the state.
   await page.goto("/dashboard");

@@ -278,6 +278,77 @@ export type AiMatchRequestRow = {
   updated_at: string;
 };
 
+export type OutreachState = "draft" | "reviewed" | "approved" | "sent" | "replied" | "no_reply" | "closed";
+
+export type OutreachRequestRow = {
+  id: string;
+  tenant_id: string;
+  job_id: string;
+  prompt_text: string;
+  fact_refs_json: Json;
+  status: "pending" | "answered" | "processed" | "rejected";
+  output_json: Json | null;
+  brief_json: Json | null;
+  error: string | null;
+  requested_by: string | null;
+  answered_at: string | null;
+  processed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ContactRow = {
+  id: string;
+  tenant_id: string;
+  job_id: string | null;
+  name: string;
+  role: string | null;
+  organisation: string | null;
+  source_url: string | null;
+  source_type: "company_site" | "press_release" | "news" | "registry" | "other" | "user";
+  email: string | null;
+  verification_status: "unverified" | "source_checked" | "source_mismatch" | "user_confirmed";
+  lawful_basis_note: string | null;
+  origin: "ai_research" | "user";
+  last_checked_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type OutreachDraftRow = {
+  id: string;
+  tenant_id: string;
+  candidate_id: string;
+  job_id: string | null;
+  contact_id: string | null;
+  kind: "recruiter" | "hiring_manager" | "follow_up";
+  language: "nl" | "en" | "fr" | "es" | "de";
+  subject: string;
+  body: string;
+  state: OutreachState;
+  version: number;
+  approved_hash: string | null;
+  approved_version: number | null;
+  approved_at: string | null;
+  reviewer_user_id: string | null;
+  sent_at: string | null;
+  evidence_json: Json;
+  warnings: string[];
+  origin: "ai_research" | "user";
+  created_at: string;
+  updated_at: string;
+};
+
+export type OutreachEventRow = {
+  id: string;
+  tenant_id: string;
+  outreach_draft_id: string;
+  event_type: string;
+  actor_id: string | null;
+  metadata_json: Json;
+  event_time: string;
+};
+
 export type Database = {
   __InternalSupabase: { PostgrestVersion: "14.18" };
   public: {
@@ -307,6 +378,10 @@ export type Database = {
       >;
       match_feedback: TableDef<MatchFeedbackRow, "tenant_id" | "job_id" | "label">;
       ai_match_requests: TableDef<AiMatchRequestRow, "tenant_id" | "job_id" | "input_hash" | "prompt_text">;
+      outreach_requests: TableDef<OutreachRequestRow, "tenant_id" | "job_id" | "prompt_text">;
+      contacts: TableDef<ContactRow, "tenant_id" | "name" | "source_type" | "origin">;
+      outreach_drafts: TableDef<OutreachDraftRow, "tenant_id" | "candidate_id" | "kind" | "language" | "body">;
+      outreach_events: TableDef<OutreachEventRow, "tenant_id" | "outreach_draft_id" | "event_type">;
     };
     Views: { [_ in never]: never };
     Functions: {

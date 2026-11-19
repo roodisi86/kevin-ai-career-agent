@@ -12,6 +12,7 @@ const links = [
   { href: "/bedrijven", label: t.nav.companies },
   { href: "/profiel", label: t.nav.profile },
   { href: "/loopbaanprofiel", label: t.nav.assessment },
+  { href: "/reverse-recruiter", label: t.nav.outreach },
   { href: "/voorkeuren", label: t.nav.preferences },
   { href: "/instellingen", label: t.nav.settings },
 ];

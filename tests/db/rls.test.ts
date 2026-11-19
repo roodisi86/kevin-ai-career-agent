@@ -443,3 +443,124 @@ describe("assessment, match and feedback isolation", () => {
     expect(code).toBe("23514");
   });
 });
+
+describe("reverse recruiter: versioned approval in the database", () => {
+  async function newDraft(): Promise<string> {
+    return asUser(
+      db.pool,
+      userA,
+      async (c) => {
+        const { rows } = await c.query<{ id: string }>(
+          `insert into public.outreach_drafts (tenant_id, candidate_id, kind, language, subject, body, state, approved_hash)
+           values ($1, $2, 'hiring_manager', 'en', 'DEMO subject', 'DEMO body', 'approved', 'forged')
+           returning id`,
+          [tenantA, candidateA],
+        );
+        return rows[0].id;
+      },
+      { commit: true },
+    );
+  }
+  const row = (id: string) =>
+    asUser(db.pool, userA, (c) =>
+      c
+        .query<{ state: string; version: number; approved_hash: string | null; approved_version: number | null }>(
+          "select state, version, approved_hash, approved_version from public.outreach_drafts where id = $1",
+          [id],
+        )
+        .then((r) => r.rows[0]),
+    );
+  const setState = (id: string, state: string) =>
+    asUser(db.pool, userA, (c) => c.query("update public.outreach_drafts set state = $2 where id = $1", [id, state]), { commit: true });
+
+  it("a new draft can never start approved, and approval needs review first", async () => {
+    const id = await newDraft();
+    expect(await row(id)).toMatchObject({ state: "draft", version: 1, approved_hash: null });
+    expect(await expectPgError(setState(id, "approved"))).toBe("42501");
+    await setState(id, "reviewed");
+    await setState(id, "approved");
+    const approved = await row(id);
+    expect(approved.state).toBe("approved");
+    expect(approved.approved_hash).toMatch(/^[a-f0-9]{32}$/);
+    expect(approved.approved_version).toBe(1);
+  });
+
+  it("editing an approved draft creates a new version and revokes approval; only the approved version can be sent", async () => {
+    const id = await newDraft();
+    await setState(id, "reviewed");
+    await setState(id, "approved");
+    await asUser(db.pool, userA, (c) => c.query("update public.outreach_drafts set body = 'DEMO body changed' where id = $1", [id]), { commit: true });
+    expect(await row(id)).toMatchObject({ state: "draft", version: 2, approved_hash: null });
+    expect(await expectPgError(setState(id, "sent"))).toBe("42501");
+    await setState(id, "reviewed");
+    await setState(id, "approved");
+    await setState(id, "sent");
+    expect((await row(id)).state).toBe("sent");
+    // A sent message cannot be edited any more.
+    expect(
+      await expectPgError(asUser(db.pool, userA, (c) => c.query("update public.outreach_drafts set subject = 'x' where id = $1", [id]))),
+    ).toBe("42501");
+  });
+
+  it("clients cannot forge approval columns, and the audit trail is append-only", async () => {
+    const id = await newDraft();
+    await asUser(
+      db.pool,
+      userA,
+      (c) => c.query("update public.outreach_drafts set approved_hash = 'forged', approved_version = 1 where id = $1", [id]),
+      { commit: true },
+    );
+    expect((await row(id)).approved_hash).toBeNull();
+    const events = await asUser(db.pool, userA, (c) =>
+      c.query<{ event_type: string }>("select event_type from public.outreach_events where outreach_draft_id = $1", [id]).then((r) => r.rows),
+    );
+    expect(events.map((e) => e.event_type)).toContain("created");
+    expect(
+      await expectPgError(asUser(db.pool, userA, (c) => c.query("delete from public.outreach_events where outreach_draft_id = $1", [id]))),
+    ).toBe("42501");
+  });
+
+  it("user B sees none of A's drafts, contacts, research or events", async () => {
+    await asUser(
+      db.pool,
+      userA,
+      (c) => c.query(`insert into public.contacts (tenant_id, name, source_type, origin) values ($1, 'DEMO Contact', 'user', 'user')`, [tenantA]),
+      { commit: true },
+    );
+    const counts = await asUser(db.pool, userB, (c) =>
+      Promise.all(
+        ["outreach_drafts", "contacts", "outreach_requests", "outreach_events"].map((t) =>
+          c.query(`select 1 from public.${t}`).then((r) => r.rowCount ?? 0),
+        ),
+      ),
+    );
+    expect(counts.reduce((a, b) => a + b, 0)).toBe(0);
+    const code = await expectPgError(
+      asUser(db.pool, userB, (c) =>
+        c.query(`insert into public.outreach_drafts (tenant_id, candidate_id, kind, language, body) values ($1, $2, 'recruiter', 'nl', 'x')`, [
+          tenantB,
+          candidateA,
+        ]),
+      ),
+    );
+    expect(code).toBe("42501");
+  });
+
+  it("deleting a draft (data wipe) cascades its audit events", async () => {
+    const id = await newDraft();
+    await asUser(db.pool, userA, (c) => c.query("delete from public.outreach_drafts where id = $1", [id]), { commit: true });
+    const left = await asUser(db.pool, userA, (c) =>
+      c.query("select 1 from public.outreach_events where outreach_draft_id = $1", [id]).then((r) => r.rowCount),
+    );
+    expect(left).toBe(0);
+  });
+
+  it("an AI-found contact without a source is refused", async () => {
+    const code = await expectPgError(
+      asUser(db.pool, userA, (c) =>
+        c.query(`insert into public.contacts (tenant_id, name, source_type, origin) values ($1, 'DEMO', 'news', 'ai_research')`, [tenantA]),
+      ),
+    );
+    expect(code).toBe("23514");
+  });
+});

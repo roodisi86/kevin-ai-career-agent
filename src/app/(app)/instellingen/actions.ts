@@ -53,6 +53,8 @@ export async function deleteAllCandidateData(_prev: DeleteState, formData: FormD
   const scannerResults = await Promise.all([
     // Matches and feedback cascade with the jobs; the assessment goes explicitly.
     supabase.from("candidate_assessments").delete().eq("candidate_id", ctx.candidateId),
+    // Outreach drafts, contacts and research cascade with the jobs; drafts without a job go explicitly.
+    supabase.from("outreach_drafts").delete().eq("tenant_id", ctx.tenantId),
     supabase.from("jobs").delete().eq("tenant_id", ctx.tenantId),
     supabase.from("job_sources").delete().eq("tenant_id", ctx.tenantId),
     supabase.from("company_targets").delete().eq("tenant_id", ctx.tenantId),

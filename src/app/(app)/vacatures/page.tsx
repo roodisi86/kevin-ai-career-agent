@@ -10,6 +10,7 @@ import { SUBSCRIPTION_MODEL, type MatchResult } from "@/lib/ai/match";
 import { RULES_VERSION } from "@/lib/matching/rules";
 import type { JobMatchRow, MatchFeedbackRow } from "@/lib/supabase/database.types";
 import { setJobState } from "./actions";
+import { startResearch } from "../reverse-recruiter/actions";
 import { ImportForm, ScanPanel } from "./components";
 import { FeedbackControl, MatchPanel } from "./match-components";
 
@@ -160,6 +161,12 @@ function MatchBlock({ match, feedback, jobId }: { match: MatchView | undefined; 
           </p>
         </div>
       </details>
+      {(match.classification === "top_match" || match.classification === "stretch") && (
+        <form action={startResearch}>
+          <input type="hidden" name="jobId" value={jobId} />
+          <button type="submit" className="btn-teal">{t.outreach.start}</button>
+        </form>
+      )}
       <FeedbackControl
         jobId={jobId}
         current={feedback ? { label: feedback.label, reasons: feedback.reasons, note: feedback.note } : null}

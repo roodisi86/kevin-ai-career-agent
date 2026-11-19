@@ -1,11 +1,15 @@
 import { defineConfig, devices } from "@playwright/test";
 import { existsSync, readFileSync } from "node:fs";
 
-// Load the synthetic DEMO credentials from .env.e2e.local (never committed).
-if (existsSync(".env.e2e.local")) {
-  for (const line of readFileSync(".env.e2e.local", "utf8").split("\n")) {
+// Load the synthetic DEMO credentials from .env.e2e.local and the public
+// Supabase URL/key from .env.local (both never committed).
+for (const file of [".env.e2e.local", ".env.local"]) {
+  if (!existsSync(file)) continue;
+  for (const line of readFileSync(file, "utf8").split("\n")) {
     const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
-    if (match && !process.env[match[1]]) process.env[match[1]] = match[2];
+    if (!match) continue;
+    if (file === ".env.local" && !match[1].startsWith("NEXT_PUBLIC_")) continue;
+    if (!process.env[match[1]]) process.env[match[1]] = match[2];
   }
 }
 

@@ -16,7 +16,7 @@ export async function GET() {
   }
 
   const supabase = await createSupabaseServerClient();
-  const [tenant, profile, documents, facts, preferences, consents, auditEvents, assessment, matches, feedback, aiRequests] = await Promise.all([
+  const [tenant, profile, documents, facts, preferences, consents, auditEvents, assessment, matches, feedback, aiRequests, outreachRequests, contacts, outreachDrafts, outreachEvents] = await Promise.all([
     supabase.from("tenants").select("id, name, is_demo, created_at").eq("id", ctx.tenantId).single(),
     supabase.from("candidate_profiles").select("*").eq("id", ctx.candidateId).single(),
     supabase
@@ -33,9 +33,13 @@ export async function GET() {
     supabase.from("job_matches").select("*").eq("tenant_id", ctx.tenantId),
     supabase.from("match_feedback").select("*").eq("tenant_id", ctx.tenantId),
     supabase.from("ai_match_requests").select("*").eq("tenant_id", ctx.tenantId),
+    supabase.from("outreach_requests").select("*").eq("tenant_id", ctx.tenantId),
+    supabase.from("contacts").select("*").eq("tenant_id", ctx.tenantId),
+    supabase.from("outreach_drafts").select("*").eq("tenant_id", ctx.tenantId),
+    supabase.from("outreach_events").select("*").eq("tenant_id", ctx.tenantId),
   ]);
 
-  const failed = [tenant, profile, documents, facts, preferences, consents, auditEvents, assessment, matches, feedback, aiRequests].some(
+  const failed = [tenant, profile, documents, facts, preferences, consents, auditEvents, assessment, matches, feedback, aiRequests, outreachRequests, contacts, outreachDrafts, outreachEvents].some(
     (r) => r.error,
   );
   if (failed) return NextResponse.json({ error: "export_failed" }, { status: 500 });
@@ -56,6 +60,10 @@ export async function GET() {
     job_matches: matches.data,
     match_feedback: feedback.data,
     ai_match_requests: aiRequests.data,
+    outreach_requests: outreachRequests.data,
+    contacts: contacts.data,
+    outreach_drafts: outreachDrafts.data,
+    outreach_events: outreachEvents.data,
     audit_events: auditEvents.data,
   };
 
