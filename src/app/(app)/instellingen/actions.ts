@@ -49,6 +49,13 @@ export async function deleteAllCandidateData(_prev: DeleteState, formData: FormD
       .eq("id", ctx.candidateId),
   ]);
   const docDelete = await supabase.from("candidate_documents").delete().eq("candidate_id", ctx.candidateId);
+  // Search activity is personal too: jobs, sources and target companies.
+  const scannerResults = await Promise.all([
+    supabase.from("jobs").delete().eq("tenant_id", ctx.tenantId),
+    supabase.from("job_sources").delete().eq("tenant_id", ctx.tenantId),
+    supabase.from("company_targets").delete().eq("tenant_id", ctx.tenantId),
+  ]);
+  if (scannerResults.some((r) => r.error)) return { ok: false, error: "db" };
   if (results.some((r) => r.error) || docDelete.error) return { ok: false, error: "db" };
 
   await audit(ctx, "data.deleted", "candidate_profile", ctx.candidateId, { documents: docs.length });

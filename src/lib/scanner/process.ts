@@ -74,9 +74,11 @@ export function toJobRecord(
   provider: JobProvider,
   prefs: Preferences,
   company: CompanyContext | null,
+  { force = false }: { force?: boolean } = {},
 ): { record: JobRecord | null; reasons: string[] } {
   const relevance = assessRelevance(posting, prefs);
-  if (!relevance.relevant) return { record: null, reasons: relevance.reasons };
+  // Manual imports are stored even when the filter would skip them: the user chose them.
+  if (!relevance.relevant && !force) return { record: null, reasons: relevance.reasons };
 
   const companyName = company?.name && provider !== "jobicy" && provider !== "adzuna" ? company.name : posting.companyName;
   const normalized: RawPosting = { ...posting, companyName };
@@ -111,7 +113,9 @@ export function toJobRecord(
         dutchContract: signals.dutchContract,
         remoteHybrid: signals.remoteHybrid,
         multinational: signals.multinational,
+        sector: company?.sector ?? null,
         relevance: relevance.reasons,
+        relevant: relevance.relevant,
       },
       track_hits: relevance.trackHits,
       gate_status: gate.status,
@@ -170,4 +174,26 @@ export function statusWhenMissing(
   }
   const ageDays = (now.getTime() - new Date(job.last_seen_at).getTime()) / 86_400_000;
   return ageDays >= 14 ? { status: "closed", status_reason: "not_seen_14_days", missed_polls: job.missed_polls + 1 } : null;
+}
+
+/** Re-evaluates hard gates from stored signals (e.g. after the user changed preferences). */
+export function regate(
+  prefs: Preferences,
+  job: { company_name: string; signals_json: unknown; salary_json: unknown },
+): GateResult {
+  const signals = (job.signals_json ?? {}) as Record<string, { value?: TriState } | string | null | undefined>;
+  const value = (key: string): TriState => {
+    const v = signals[key];
+    return typeof v === "object" && v && (v.value === "yes" || v.value === "no") ? v.value : "unknown";
+  };
+  const salary = (job.salary_json ?? {}) as { annualEur?: number | null };
+  return evaluateHardGates(prefs, {
+    employerName: job.company_name,
+    dutchContract: value("dutchContract"),
+    multinational: value("multinational"),
+    companyCar: value("companyCar"),
+    remoteHybrid: value("remoteHybrid"),
+    annualBaseSalaryEur: typeof salary.annualEur === "number" ? salary.annualEur : null,
+    sector: typeof signals.sector === "string" ? signals.sector : null,
+  });
 }

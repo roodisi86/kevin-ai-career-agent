@@ -34,6 +34,10 @@ const PRIVATE_TABLES = [
   "candidate_preferences",
   "audit_events",
   "consent_records",
+  "company_targets",
+  "job_sources",
+  "jobs",
+  "scans",
 ] as const;
 
 describe.skipIf(!enabled)("hosted Supabase isolation (DEMO account)", () => {

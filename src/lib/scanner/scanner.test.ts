@@ -259,6 +259,19 @@ describe("adapters + processing on 20 synthetic DEMO postings", () => {
   });
 });
 
+describe("title relevance", () => {
+  it("keeps commercial/wholesale manager roles but not account managers or store managers", async () => {
+    const { titleTrackHits, isNegativeTitle } = await import("./relevance");
+    const prefs = defaultPreferences();
+    expect(titleTrackHits("Commercieel Manager", prefs).hits).toContain("commercial_leadership");
+    expect(titleTrackHits("Wholesale Manager Horeca", prefs).hits).toContain("commercial_leadership");
+    expect(titleTrackHits("Storemanager Rotterdam", prefs).hits).toHaveLength(0);
+    expect(titleTrackHits("Accountmanager Retail", prefs).hits).toHaveLength(0);
+    expect(titleTrackHits("Engineering Manager, Payments", prefs).hits).toHaveLength(0);
+    expect(isNegativeTitle("Junior Accountmanager binnendienst", prefs)).not.toBeNull();
+  });
+});
+
 describe("job lifecycle", () => {
   const base = { provider: "greenhouse" as const, status: "open" as const, missed_polls: 0, last_seen_at: "2026-11-19T00:00:00Z" };
   const now = new Date("2026-11-19T12:00:00Z");

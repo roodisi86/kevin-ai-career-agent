@@ -86,7 +86,8 @@ export function titleTrackHits(title: string, prefs: Preferences): { hits: Track
       if (!enabled || !has(words, domain)) continue;
       // Domains that are titles themselves ("general manager") count alone.
       const isTitle = ["general manager", "country manager", "managing director", "algemeen directeur", "chief of staff"].includes(domain);
-      if (isTitle || strong || (manager && ["wholesale", "channel", "partnership", "partnerships", "alliances", "market development", "business unit"].includes(domain))) {
+      const managerDomains = ["wholesale", "channel", "partnership", "partnerships", "alliances", "market development", "business unit", "commercial", "commercieel", "commerciele"];
+      if (isTitle || strong || (manager && managerDomains.includes(domain))) {
         hits.add(track);
         reasons.push(`seniore titel met "${domain}"`);
       }

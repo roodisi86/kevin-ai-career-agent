@@ -15,7 +15,16 @@ export type AuditAction =
   | "preferences.updated"
   | "profile.updated"
   | "data.exported"
-  | "data.deleted";
+  | "data.deleted"
+  | "scan.started"
+  | "scan.finished"
+  | "company.added"
+  | "company.removed"
+  | "source.verified"
+  | "source.approved"
+  | "source.revoked"
+  | "job.imported"
+  | "job.state_changed";
 
 type SafeMetadata = Record<string, string | number | boolean | null>;
 

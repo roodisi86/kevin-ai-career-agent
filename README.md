@@ -12,7 +12,7 @@ Private AI Job Scanner + AI Reverse Recruiter, built SaaS-ready (multi-tenant sc
 | --- | --- | --- |
 | 0 — Foundation | Next.js 16 + strict TS, Supabase Auth, protected dashboard, tenants/memberships/profile/audit/consent with RLS, CI | ✅ |
 | 1 — Profile | Private CV upload (PDF/DOCX), text extraction, Claude fact suggestions (optional), confirmed vs suggested vs missing facts, preferences (tracks A–D, hard/soft filters, sectors, excluded employers), export + wipe | ✅ (AI path needs `ANTHROPIC_API_KEY`) |
-| 2 — Job scanner | SmartRecruiters, Greenhouse, Adzuna NL, manual import | not started |
+| 2 — Job scanner | Greenhouse, SmartRecruiters, Lever (+EU), Ashby per verified company; Jobicy (remote); Adzuna NL (key); manual import; dedupe, status lifecycle, hard gates, manual scan | ✅ (Adzuna needs key; daily schedule not yet) |
 | 3 — Explainable matching | | not started |
 | 4 — Reverse recruiter | | not started |
 

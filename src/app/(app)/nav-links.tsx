@@ -8,6 +8,8 @@ const t = getDictionary();
 
 const links = [
   { href: "/dashboard", label: t.nav.dashboard },
+  { href: "/vacatures", label: t.nav.jobs },
+  { href: "/bedrijven", label: t.nav.companies },
   { href: "/profiel", label: t.nav.profile },
   { href: "/voorkeuren", label: t.nav.preferences },
   { href: "/instellingen", label: t.nav.settings },

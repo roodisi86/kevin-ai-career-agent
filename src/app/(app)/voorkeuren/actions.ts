@@ -5,6 +5,7 @@ import { getAppContext } from "@/lib/dal";
 import { audit } from "@/lib/audit";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PreferencesSchema } from "@/lib/preferences/schema";
+import { regateAll } from "@/lib/scanner/service";
 
 export type SavePreferencesState = { ok: boolean; error: "invalid" | "db" | null; savedAt: string | null };
 
@@ -48,7 +49,10 @@ export async function savePreferences(
     excluded_employers: parsed.data.excludedEmployers.length,
     sectors: parsed.data.sectors.length,
   });
+  // Hard requirements may have changed: re-evaluate stored jobs right away.
+  await regateAll(ctx);
   revalidatePath("/voorkeuren");
+  revalidatePath("/vacatures");
   revalidatePath("/dashboard");
   return { ok: true, error: null, savedAt: new Date().toISOString() };
 }

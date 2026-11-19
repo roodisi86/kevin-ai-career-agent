@@ -6,6 +6,7 @@ import { loadProfileData } from "@/lib/profile/queries";
 import { countByStatus } from "@/lib/profile/summary";
 import { parseStoredPreferences, constraintKeys } from "@/lib/preferences/schema";
 import { formatDateTime } from "@/lib/time";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const t = getDictionary();
 
@@ -15,6 +16,13 @@ export default async function DashboardPage() {
   const counts = countByStatus(data.facts);
   const { preferences, isDefault } = parseStoredPreferences(data.preferences?.preferences_json);
   const aiConfigured = isAiConfigured();
+  const supabase = await createSupabaseServerClient();
+  const [{ data: lastScan }, { count: activeJobs }, { count: reviewJobs }, { count: interestingJobs }] = await Promise.all([
+    supabase.from("scans").select("started_at, status").eq("tenant_id", ctx.tenantId).order("started_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("jobs").select("id", { count: "exact", head: true }).eq("tenant_id", ctx.tenantId).neq("status", "closed").is("duplicate_of", null).neq("gate_status", "fail"),
+    supabase.from("jobs").select("id", { count: "exact", head: true }).eq("tenant_id", ctx.tenantId).neq("status", "closed").is("duplicate_of", null).eq("gate_status", "review_required"),
+    supabase.from("jobs").select("id", { count: "exact", head: true }).eq("tenant_id", ctx.tenantId).eq("user_state", "interesting"),
+  ]);
 
   const activeTracks = preferences.tracks.filter((tr) => tr.enabled).map((tr) => t.preferences.tracks[tr.id]);
   const hardFilters = constraintKeys
@@ -108,7 +116,21 @@ export default async function DashboardPage() {
           <h2 id="scanner-card" className="mb-2 font-semibold">
             {t.dashboard.scannerCard}
           </h2>
-          <p className="text-sm text-navy-600">{t.dashboard.scannerPhase}</p>
+          {lastScan ? (
+            <>
+              <p className="text-sm text-navy-600">
+                {t.jobs.scan.last}: {formatDateTime(lastScan.started_at)} · {t.jobs.scan.status[lastScan.status]}
+              </p>
+              <p className="mt-1 text-sm" data-testid="scanner-stats">
+                {t.dashboard.scannerStats(activeJobs ?? 0, reviewJobs ?? 0, interestingJobs ?? 0)}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-navy-600">{t.dashboard.scannerEmpty}</p>
+          )}
+          <Link href="/vacatures" className="btn-secondary mt-3">
+            {t.dashboard.goTo} {t.nav.jobs}
+          </Link>
         </section>
       </div>
     </div>
