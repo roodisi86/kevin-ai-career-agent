@@ -13,3 +13,8 @@
 # Netlify keeps it up to date.
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# Keep CV processing in the EU: run the generated Next.js server function in
+# Frankfurt (fra), next to the Supabase project (eu-central-1).
+[functions."___netlify-server-handler"]
+  region = "fra"
