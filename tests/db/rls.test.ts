@@ -293,3 +293,63 @@ describe("fact confirmation rules", () => {
     expect(candidateB).toBeTruthy();
   });
 });
+
+describe("job scanner isolation", () => {
+  it("user B cannot see, add or link to tenant A's companies, sources and jobs", async () => {
+    const ids = await asUser(
+      db.pool,
+      userA,
+      async (c) => {
+        const target = await c.query<{ id: string }>(
+          `insert into public.company_targets (tenant_id, company_name, company_key) values ($1, 'DEMO Co', 'demo co') returning id`,
+          [tenantA],
+        );
+        const source = await c.query<{ id: string }>(
+          `insert into public.job_sources (tenant_id, company_target_id, provider, identifier) values ($1, $2, 'greenhouse', 'democo') returning id`,
+          [tenantA, target.rows[0].id],
+        );
+        const job = await c.query<{ id: string }>(
+          `insert into public.jobs (tenant_id, source_id, provider, external_job_id, company_name, title, canonical_url, raw_hash, dedupe_key)
+           values ($1, $2, 'greenhouse', '1', 'DEMO Co', 'DEMO Country Manager', 'https://example.invalid/1', repeat('b', 64), 'demo co|demo country manager|nl')
+           returning id`,
+          [tenantA, source.rows[0].id],
+        );
+        return { target: target.rows[0].id, source: source.rows[0].id, job: job.rows[0].id };
+      },
+      { commit: true },
+    );
+
+    const visible = await asUser(db.pool, userB, async (c) => {
+      const counts = await Promise.all(
+        ["company_targets", "job_sources", "jobs"].map((t) =>
+          c.query(`select 1 from public.${t} where tenant_id = $1`, [tenantA]).then((r) => r.rowCount ?? 0),
+        ),
+      );
+      return counts.reduce((a, b) => a + b, 0);
+    });
+    expect(visible).toBe(0);
+
+    // B cannot point its own rows at A's source/target/job.
+    for (const sql of [
+      `insert into public.job_sources (tenant_id, company_target_id, provider, identifier) values ($1, '${ids.target}', 'lever', 'x')`,
+      `insert into public.jobs (tenant_id, source_id, provider, external_job_id, company_name, title, canonical_url, raw_hash, dedupe_key)
+       values ($1, '${ids.source}', 'greenhouse', '2', 'X', 'X', 'https://example.invalid/2', repeat('c', 64), 'x')`,
+      `insert into public.jobs (tenant_id, provider, external_job_id, company_name, title, canonical_url, raw_hash, dedupe_key, duplicate_of)
+       values ($1, 'manual', '3', 'X', 'X', 'https://example.invalid/3', repeat('d', 64), 'x', '${ids.job}')`,
+    ]) {
+      const code = await expectPgError(asUser(db.pool, userB, (c) => c.query(sql, [tenantB])));
+      expect(code).toBe("42501");
+    }
+  });
+
+  it("source identifiers are restricted to safe characters", async () => {
+    const code = await expectPgError(
+      asUser(db.pool, userA, (c) =>
+        c.query(`insert into public.job_sources (tenant_id, provider, identifier) values ($1, 'greenhouse', '../../etc')`, [
+          tenantA,
+        ]),
+      ),
+    );
+    expect(code).toBe("23514");
+  });
+});
