@@ -29,6 +29,6 @@ Private AI Job Scanner + AI Reverse Recruiter for Kevin Wuytack, built SaaS-read
 - Work in phases as described in the build plan. Don't start the next phase without Kevin's approval.
 - A module is only "done" after typecheck, lint and tests pass and the user journey actually works. No dead buttons, and never present a mock as an integration.
 - Ask before deploying, spending money on paid APIs, granting OAuth access or writing outside the repo.
-- Never ask Kevin to paste API keys into the chat. He sets them in `.env.local`.
+- Never ask Kevin to paste API keys into the chat. He sets them himself in `.env.local` (local) or in Netlify environment variables (hosted).
 - Make small, coherent commits. Don't touch unrelated files.
 - After each batch of work, report in Dutch: what works, changed files, verification results, gaps or blocked credentials, and the next decision Kevin needs to make.
