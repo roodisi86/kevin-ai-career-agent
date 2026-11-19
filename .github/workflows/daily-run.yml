@@ -1,13 +1,17 @@
 name: Daily scan and AI assessment
 
-# Every morning: scan approved job sources and let Claude assess new or
-# changed vacancies. Runs as the dedicated automation account (a plain tenant
+# Every morning: scan approved job sources, assess vacancies (rules + the
+# Claude-subscription queue), process company signals and store the daily
+# digest. A second run mid-morning picks up the answers of the 06:47 Claude
+# task so the digest in the app reflects them (the digest is one row per day). Runs as the dedicated automation account (a plain tenant
 # member, so RLS applies); there is no service-role key. It never sends,
 # applies or contacts anyone. Logs contain counts only.
 on:
   schedule:
     # 05:17 UTC = 06:17 Amsterdam in winter, 07:17 in summer.
     - cron: "17 5 * * *"
+    # 08:23 UTC = 09:23 Amsterdam in winter: process Claude's morning answers.
+    - cron: "23 8 * * *"
   workflow_dispatch:
 
 permissions:

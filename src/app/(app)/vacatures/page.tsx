@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getAppContext } from "@/lib/dal";
 import { getDictionary } from "@/lib/i18n";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -11,6 +12,7 @@ import { RULES_VERSION } from "@/lib/matching/rules";
 import type { JobMatchRow, MatchFeedbackRow } from "@/lib/supabase/database.types";
 import { setJobState } from "./actions";
 import { startResearch } from "../reverse-recruiter/actions";
+import { addJobToPipeline } from "../sollicitaties/actions";
 import { ImportForm, ScanPanel } from "./components";
 import { FeedbackControl, MatchPanel } from "./match-components";
 
@@ -180,11 +182,13 @@ function JobCard({
   duplicates,
   match,
   feedback,
+  inPipeline,
 }: {
   job: JobListRow;
   duplicates: JobListRow[];
   match: MatchView | undefined;
   feedback: FeedbackView | undefined;
+  inPipeline: boolean;
 }) {
   const signals = (job.signals_json ?? {}) as Record<string, { value?: string; evidence?: string } | unknown>;
   const checks = (((job.gate_json ?? {}) as { checks?: { key: string; mode: string; outcome: string; detail?: string }[] }).checks ?? []).filter(
@@ -195,7 +199,7 @@ function JobCard({
   const states = ["interesting", "later", "not_relevant"] as const;
 
   return (
-    <li className="card space-y-3" data-testid="job">
+    <li id={`job-${job.id}`} className="card space-y-3" data-testid="job">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold">{job.title}</h3>
@@ -204,9 +208,19 @@ function JobCard({
             {t.jobs.card.workplace[job.workplace_type]}
           </p>
         </div>
-        <a href={job.canonical_url} target="_blank" rel="noopener noreferrer nofollow" className="btn-primary">
-          {t.jobs.card.openOriginal} ↗
-        </a>
+        <div className="flex flex-wrap items-center gap-2">
+          {inPipeline ? (
+            <Link href="/sollicitaties" className="badge bg-teal-100 text-teal-700">{t.applications.inPipeline}</Link>
+          ) : (
+            <form action={addJobToPipeline}>
+              <input type="hidden" name="jobId" value={job.id} />
+              <button type="submit" className="btn-secondary">{t.applications.fromJob}</button>
+            </form>
+          )}
+          <a href={job.canonical_url} target="_blank" rel="noopener noreferrer nofollow" className="btn-primary">
+            {t.jobs.card.openOriginal} ↗
+          </a>
+        </div>
       </div>
 
       <MatchBlock match={match} feedback={feedback} jobId={job.id} />
@@ -362,6 +376,7 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
     { data: assessment },
     pendingInfo,
     { data: lastScheduled },
+    { data: pipelineRows },
   ] = await Promise.all([
       query,
       supabase.from("scans").select("*").eq("tenant_id", ctx.tenantId).order("started_at", { ascending: false }).limit(1).maybeSingle(),
@@ -381,8 +396,10 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
         .order("started_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
+      supabase.from("applications").select("job_id").eq("tenant_id", ctx.tenantId).not("job_id", "is", null),
     ]);
 
+  const inPipeline = new Set((pipelineRows ?? []).map((r) => r.job_id));
   const matches = new Map((matchRows ?? []).map((row) => [row.job_id, row as MatchView]));
   const feedbackByJob = new Map((feedbackRows ?? []).map((row) => [row.job_id, row as FeedbackView]));
   // Default: recommended when there are assessments, otherwise everything.
@@ -523,6 +540,7 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
               duplicates={dupesOf.get(job.id) ?? []}
               match={matches.get(job.id)}
               feedback={feedbackByJob.get(job.id)}
+              inPipeline={inPipeline.has(job.id)}
             />
           ))}
         </ul>

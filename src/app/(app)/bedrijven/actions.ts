@@ -108,3 +108,16 @@ export async function approveAllVerified(): Promise<void> {
   await audit(ctx, "source.approved", "job_source", null, { bulk: true, count: data?.length ?? 0 });
   refresh();
 }
+
+/** Follow a company for weekly Hidden Opportunities research. */
+export async function setWatchSignals(formData: FormData): Promise<void> {
+  const ctx = await getAppContext();
+  const id = Id.safeParse(formData.get("id"));
+  if (!id.success) return;
+  const watch = formData.get("watch") === "true";
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.from("company_targets").update({ watch_signals: watch }).eq("tenant_id", ctx.tenantId).eq("id", id.data);
+  if (!error) await audit(ctx, "company.watch_changed", "company_target", id.data, { watch });
+  refresh();
+  revalidatePath("/signalen");
+}

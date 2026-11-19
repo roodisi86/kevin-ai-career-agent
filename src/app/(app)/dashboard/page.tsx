@@ -7,6 +7,8 @@ import { countByStatus } from "@/lib/profile/summary";
 import { parseStoredPreferences, constraintKeys } from "@/lib/preferences/schema";
 import { formatDateTime } from "@/lib/time";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { loadLatestDigest } from "@/lib/pilot/service";
+import { DigestCard } from "./digest-card";
 
 const t = getDictionary();
 
@@ -25,6 +27,7 @@ export default async function DashboardPage() {
     { count: topMatches },
     { count: stretchMatches },
     { data: assessment },
+    digest,
   ] = await Promise.all([
     supabase.from("scans").select("started_at, status").eq("tenant_id", ctx.tenantId).order("started_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("jobs").select("id", { count: "exact", head: true }).eq("tenant_id", ctx.tenantId).neq("status", "closed").is("duplicate_of", null).neq("gate_status", "fail"),
@@ -33,6 +36,7 @@ export default async function DashboardPage() {
     supabase.from("job_matches").select("id", { count: "exact", head: true }).eq("tenant_id", ctx.tenantId).eq("classification", "top_match"),
     supabase.from("job_matches").select("id", { count: "exact", head: true }).eq("tenant_id", ctx.tenantId).eq("classification", "stretch"),
     supabase.from("candidate_assessments").select("completed_at").eq("candidate_id", ctx.candidateId).maybeSingle(),
+    loadLatestDigest(ctx),
   ]);
 
   const activeTracks = preferences.tracks.filter((tr) => tr.enabled).map((tr) => t.preferences.tracks[tr.id]);
@@ -61,6 +65,8 @@ export default async function DashboardPage() {
         <h1 className="text-2xl font-semibold">{t.dashboard.title}</h1>
         <p className="text-sm text-navy-600">{t.dashboard.intro}</p>
       </div>
+
+      <DigestCard digest={digest} />
 
       <section aria-labelledby="next-step" className="card border-teal-600/40 bg-teal-100/40">
         <h2 id="next-step" className="text-sm font-semibold uppercase tracking-wide text-teal-700">

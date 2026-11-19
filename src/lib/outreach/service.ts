@@ -83,7 +83,7 @@ function safeToFetch(url: string): boolean {
   return true;
 }
 
-async function fetchPageText(url: string): Promise<string | null> {
+export async function fetchPageText(url: string): Promise<string | null> {
   if (!safeToFetch(url)) return null;
   try {
     const res = await fetch(url, {

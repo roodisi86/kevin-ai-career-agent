@@ -16,7 +16,7 @@ export async function GET() {
   }
 
   const supabase = await createSupabaseServerClient();
-  const [tenant, profile, documents, facts, preferences, consents, auditEvents, assessment, matches, feedback, aiRequests, outreachRequests, contacts, outreachDrafts, outreachEvents] = await Promise.all([
+  const [tenant, profile, documents, facts, preferences, consents, auditEvents, assessment, matches, feedback, aiRequests, outreachRequests, contacts, outreachDrafts, outreachEvents, applications, applicationEvents, digests, signalRequests, signals] = await Promise.all([
     supabase.from("tenants").select("id, name, is_demo, created_at").eq("id", ctx.tenantId).single(),
     supabase.from("candidate_profiles").select("*").eq("id", ctx.candidateId).single(),
     supabase
@@ -37,9 +37,14 @@ export async function GET() {
     supabase.from("contacts").select("*").eq("tenant_id", ctx.tenantId),
     supabase.from("outreach_drafts").select("*").eq("tenant_id", ctx.tenantId),
     supabase.from("outreach_events").select("*").eq("tenant_id", ctx.tenantId),
+    supabase.from("applications").select("*").eq("tenant_id", ctx.tenantId),
+    supabase.from("application_events").select("*").eq("tenant_id", ctx.tenantId),
+    supabase.from("daily_digests").select("*").eq("tenant_id", ctx.tenantId),
+    supabase.from("signal_requests").select("id, batch_key, status, result_counts, created_at, processed_at").eq("tenant_id", ctx.tenantId),
+    supabase.from("company_signals").select("*").eq("tenant_id", ctx.tenantId),
   ]);
 
-  const failed = [tenant, profile, documents, facts, preferences, consents, auditEvents, assessment, matches, feedback, aiRequests, outreachRequests, contacts, outreachDrafts, outreachEvents].some(
+  const failed = [tenant, profile, documents, facts, preferences, consents, auditEvents, assessment, matches, feedback, aiRequests, outreachRequests, contacts, outreachDrafts, outreachEvents, applications, applicationEvents, digests, signalRequests, signals].some(
     (r) => r.error,
   );
   if (failed) return NextResponse.json({ error: "export_failed" }, { status: 500 });
@@ -48,7 +53,7 @@ export async function GET() {
 
   const body = {
     exported_at: new Date().toISOString(),
-    format_version: 2,
+    format_version: 3,
     note: "Original CV files are not embedded; download them individually from Mijn profiel.",
     tenant: tenant.data,
     profile: profile.data,
@@ -64,6 +69,11 @@ export async function GET() {
     contacts: contacts.data,
     outreach_drafts: outreachDrafts.data,
     outreach_events: outreachEvents.data,
+    applications: applications.data,
+    application_events: applicationEvents.data,
+    daily_digests: digests.data,
+    signal_requests: signalRequests.data,
+    company_signals: signals.data,
     audit_events: auditEvents.data,
   };
 

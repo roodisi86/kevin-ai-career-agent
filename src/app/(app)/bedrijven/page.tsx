@@ -4,7 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { adzunaConfigured, ensurePlatformSources, loadAllTargets, SOURCE_LABELS } from "@/lib/scanner/service";
 import { formatDateTime } from "@/lib/time";
 import type { JobSourceRow } from "@/lib/supabase/database.types";
-import { approveAllVerified, loadSuggested, removeCompany, setSourceApproval } from "./actions";
+import { approveAllVerified, loadSuggested, removeCompany, setSourceApproval, setWatchSignals } from "./actions";
 import { AddCompanyForm, VerifyAllButton, VerifyButton } from "./components";
 
 const t = getDictionary();
@@ -144,8 +144,18 @@ export default async function CompaniesPage() {
                     return (
                       <li key={target.id} className="space-y-2 py-3" data-testid="company">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="font-medium">{target.company_name}</p>
+                          <p className="font-medium">
+                            {target.company_name}
+                            {target.watch_signals && <span className="badge ml-2 bg-teal-100 text-teal-700">{t.signals.watched}</span>}
+                          </p>
                           <div className="flex flex-wrap gap-2">
+                            <form action={setWatchSignals}>
+                              <input type="hidden" name="id" value={target.id} />
+                              <input type="hidden" name="watch" value={target.watch_signals ? "false" : "true"} />
+                              <button type="submit" className="btn-secondary" aria-pressed={target.watch_signals}>
+                                {target.watch_signals ? `★ ${t.signals.unwatch}` : `☆ ${t.signals.watch}`}
+                              </button>
+                            </form>
                             <VerifyButton id={target.id} />
                             <form action={removeCompany}>
                               <input type="hidden" name="id" value={target.id} />

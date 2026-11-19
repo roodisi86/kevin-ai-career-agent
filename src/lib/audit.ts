@@ -33,7 +33,15 @@ export type AuditAction =
   | "outreach.draft_saved"
   | "outreach.state_changed"
   | "outreach.contact_added"
-  | "outreach.contact_removed";
+  | "outreach.contact_removed"
+  | "application.created"
+  | "application.updated"
+  | "application.deleted"
+  | "digest.generated"
+  | "signals.requested"
+  | "signals.processed"
+  | "signals.feedback"
+  | "company.watch_changed";
 
 type SafeMetadata = Record<string, string | number | boolean | null>;
 

@@ -13,6 +13,9 @@ const links = [
   { href: "/profiel", label: t.nav.profile },
   { href: "/loopbaanprofiel", label: t.nav.assessment },
   { href: "/reverse-recruiter", label: t.nav.outreach },
+  { href: "/sollicitaties", label: t.nav.applications },
+  { href: "/signalen", label: t.nav.signals },
+  { href: "/pilot", label: t.nav.pilot },
   { href: "/voorkeuren", label: t.nav.preferences },
   { href: "/instellingen", label: t.nav.settings },
 ];

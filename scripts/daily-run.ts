@@ -1,6 +1,8 @@
 /**
- * Daily automation: scan all approved sources and let Claude assess new or
- * changed vacancies, for every tenant the automation account is a member of.
+ * Daily automation, for every tenant the automation account is a member of:
+ * verify company boards, scan all approved sources, assess vacancies (rules +
+ * the Claude-subscription queue), process company signals and queue the weekly
+ * signal batch, and store the daily digest.
  *
  * Runs in GitHub Actions (.github/workflows/daily-run.yml):
  *   node --conditions=react-server --import tsx scripts/daily-run.ts
@@ -8,7 +10,8 @@
  * Security model: there is no service-role key. The automation signs in as
  * its own Supabase user, which is a plain 'member' of the tenant, so every
  * query still goes through Row-Level Security. It never sends, applies or
- * contacts anyone: it only reads job feeds and writes scans, jobs and matches.
+ * contacts anyone: it reads job feeds and public pages and writes scans, jobs,
+ * matches, signals and the digest.
  *
  * Logs contain counts only — never CV text, facts or vacancy content.
  */
@@ -18,6 +21,8 @@ import type { Database } from "@/lib/supabase/database.types";
 import { isApiMatchingEnabled } from "@/lib/env";
 import { finishScan, runSourceInScan, startScan, verifyPendingTargets } from "@/lib/scanner/service";
 import { pendingMatchJobIds, refreshMatches, scoreJob } from "@/lib/matching/service";
+import { generateDigest } from "@/lib/pilot/service";
+import { processSignalAnswers, requestSignals } from "@/lib/signals/service";
 
 const MAX_MATCHES_PER_RUN = 120;
 const STOP = new Set(["not_configured", "cap_reached", "no_facts"]);
@@ -118,35 +123,58 @@ async function main(): Promise<number> {
         `${label}: rules scored ${refreshed.rulesScored}, Claude answers processed ${refreshed.aiProcessed} (rejected ${refreshed.aiRejected}), queued ${refreshed.queued}, waiting ${refreshed.pendingInQueue}`,
       );
 
-      // 3. Paid API path, only when an ANTHROPIC_API_KEY is configured.
-      if (!isApiMatchingEnabled()) continue;
-      const { pending } = await pendingMatchJobIds(ctx);
-      const queue = pending.slice(0, MAX_MATCHES_PER_RUN);
-      const tally: Record<string, number> = {};
-      let stopReason: string | null = null;
-      const worker = async () => {
-        while (queue.length && !stopReason) {
-          const id = queue.shift()!;
-          try {
-            const outcome = await scoreJob(ctx, id);
-            const key = outcome.status === "failed" ? `failed_${outcome.reason}` : outcome.status;
-            tally[key] = (tally[key] ?? 0) + 1;
-            if (STOP.has(outcome.status)) stopReason = outcome.status;
-          } catch {
-            tally.error = (tally.error ?? 0) + 1;
-          }
-        }
-      };
-      await Promise.all([worker(), worker(), worker()]);
-      console.log(
-        `${label}: AI assessment — ${pending.length} pending; ${Object.entries(tally).map(([k, v]) => `${k}=${v}`).join(", ") || "nothing to do"}${stopReason ? ` (stopped: ${stopReason})` : ""}`,
-      );
+      // 3. Hidden Opportunities: store verified answers, queue this week's batch (once per ISO week).
+      try {
+        const answers = await processSignalAnswers(ctx);
+        const queued = await requestSignals(ctx);
+        console.log(
+          `${label}: signals processed ${answers.processed} batch(es), stored ${answers.stored}, rejected ${answers.rejected}; weekly batch ${queued.ok ? queued.status : queued.error}`,
+        );
+      } catch (error) {
+        console.error(`${label}: signals step failed (${(error as Error).message?.slice(0, 80)})`);
+      }
+
+      // 4. Paid API path, only when an ANTHROPIC_API_KEY is configured.
+      if (isApiMatchingEnabled()) await runApiPath(ctx, label);
+
+      // 5. Daily digest (one row per Amsterdam date; a retried run updates it).
+      try {
+        const digest = await generateDigest(ctx);
+        console.log(`${label}: digest ${digest.date} — ${digest.content.top.length} top picks`);
+      } catch (error) {
+        console.error(`${label}: digest failed (${(error as Error).message?.slice(0, 80)})`);
+        failures++;
+      }
       if (finished.status === "failed") failures++;
     }
     return failures > 0 ? 1 : 0;
   } finally {
     await db.auth.signOut();
   }
+}
+
+async function runApiPath(ctx: AppContext, label: string): Promise<void> {
+  const { pending } = await pendingMatchJobIds(ctx);
+  const queue = pending.slice(0, MAX_MATCHES_PER_RUN);
+  const tally: Record<string, number> = {};
+  let stopReason: string | null = null;
+  const worker = async () => {
+    while (queue.length && !stopReason) {
+      const id = queue.shift()!;
+      try {
+        const outcome = await scoreJob(ctx, id);
+        const key = outcome.status === "failed" ? `failed_${outcome.reason}` : outcome.status;
+        tally[key] = (tally[key] ?? 0) + 1;
+        if (STOP.has(outcome.status)) stopReason = outcome.status;
+      } catch {
+        tally.error = (tally.error ?? 0) + 1;
+      }
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  console.log(
+    `${label}: AI assessment — ${pending.length} pending; ${Object.entries(tally).map(([k, v]) => `${k}=${v}`).join(", ") || "nothing to do"}${stopReason ? ` (stopped: ${stopReason})` : ""}`,
+  );
 }
 
 main()

@@ -564,3 +564,120 @@ describe("reverse recruiter: versioned approval in the database", () => {
     expect(code).toBe("23514");
   });
 });
+
+describe("pilot: applications, digests and company signals", () => {
+  async function targetA(): Promise<string> {
+    return asUser(
+      db.pool,
+      userA,
+      async (c) => {
+        const { rows } = await c.query<{ id: string }>(
+          `insert into public.company_targets (tenant_id, company_name, company_key) values ($1, 'DEMO Pilot Co', 'demo-pilot-co-' || gen_random_uuid()) returning id`,
+          [tenantA],
+        );
+        return rows[0].id;
+      },
+      { commit: true },
+    );
+  }
+
+  it("stage changes are logged append-only and closing sets closed_at", async () => {
+    const id = await asUser(
+      db.pool,
+      userA,
+      async (c) => {
+        const { rows } = await c.query<{ id: string }>(
+          `insert into public.applications (tenant_id, candidate_id, company_name, role_title, stage)
+           values ($1, $2, 'DEMO Co', 'DEMO Director', 'prospect') returning id`,
+          [tenantA, candidateA],
+        );
+        return rows[0].id;
+      },
+      { commit: true },
+    );
+    await asUser(db.pool, userA, (c) => c.query("update public.applications set stage = 'applied' where id = $1", [id]), { commit: true });
+    await asUser(db.pool, userA, (c) => c.query("update public.applications set stage = 'rejected' where id = $1", [id]), { commit: true });
+    const app = await asUser(db.pool, userA, (c) =>
+      c.query<{ closed_at: string | null; applied_on: string | null }>("select closed_at, applied_on from public.applications where id = $1", [id]).then((r) => r.rows[0]),
+    );
+    expect(app.closed_at).not.toBeNull();
+    expect(app.applied_on).not.toBeNull();
+    const events = await asUser(db.pool, userA, (c) =>
+      c.query<{ event_type: string }>("select event_type from public.application_events where application_id = $1 order by event_time", [id]).then((r) => r.rows),
+    );
+    expect(events.map((e) => e.event_type)).toEqual(["created", "stage_changed", "stage_changed"]);
+    expect(
+      await expectPgError(asUser(db.pool, userA, (c) => c.query("update public.application_events set event_type = 'x' where application_id = $1", [id]))),
+    ).toBe("42501");
+    expect(
+      await expectPgError(asUser(db.pool, userA, (c) => c.query("insert into public.application_events (tenant_id, application_id, event_type) values ($1, $2, 'forged')", [tenantA, id]))),
+    ).toBe("42501");
+  });
+
+  it("one digest per day: a retried run updates instead of duplicating", async () => {
+    const upsert = () =>
+      asUser(
+        db.pool,
+        userA,
+        (c) =>
+          c.query(
+            `insert into public.daily_digests (tenant_id, digest_date, push_text) values ($1, '2026-11-20', 'DEMO digest')
+             on conflict (tenant_id, digest_date) do update set push_text = excluded.push_text`,
+            [tenantA],
+          ),
+        { commit: true },
+      );
+    await upsert();
+    await upsert();
+    const n = await asUser(db.pool, userA, (c) =>
+      c.query("select 1 from public.daily_digests where digest_date = '2026-11-20'").then((r) => r.rowCount),
+    );
+    expect(n).toBe(1);
+  });
+
+  it("user B cannot read A's pipeline, digests or signals, nor link to A's company", async () => {
+    const target = await targetA();
+    await asUser(
+      db.pool,
+      userA,
+      (c) =>
+        c.query(
+          `insert into public.company_signals (tenant_id, company_target_id, signal_type, headline, source_url, dedupe_key)
+           values ($1, $2, 'expansion', 'DEMO signal', 'https://example.com/news', md5(gen_random_uuid()::text))`,
+          [tenantA, target],
+        ),
+      { commit: true },
+    );
+    const counts = await asUser(db.pool, userB, (c) =>
+      Promise.all(
+        ["applications", "application_events", "daily_digests", "company_signals", "signal_requests"].map((t) =>
+          c.query(`select 1 from public.${t}`).then((r) => r.rowCount ?? 0),
+        ),
+      ),
+    );
+    expect(counts.reduce((a, b) => a + b, 0)).toBe(0);
+    const code = await expectPgError(
+      asUser(db.pool, userB, (c) =>
+        c.query(
+          `insert into public.applications (tenant_id, candidate_id, company_target_id, company_name, role_title) values ($1, $2, $3, 'x', 'y')`,
+          [tenantB, candidateB, target],
+        ),
+      ),
+    );
+    expect(code).toBe("42501");
+  });
+
+  it("signals need an https source", async () => {
+    const target = await targetA();
+    const code = await expectPgError(
+      asUser(db.pool, userA, (c) =>
+        c.query(
+          `insert into public.company_signals (tenant_id, company_target_id, signal_type, headline, source_url, dedupe_key)
+           values ($1, $2, 'other', 'DEMO', 'http://example.com', md5('x'))`,
+          [tenantA, target],
+        ),
+      ),
+    );
+    expect(code).toBe("23514");
+  });
+});

@@ -55,6 +55,10 @@ export async function deleteAllCandidateData(_prev: DeleteState, formData: FormD
     supabase.from("candidate_assessments").delete().eq("candidate_id", ctx.candidateId),
     // Outreach drafts, contacts and research cascade with the jobs; drafts without a job go explicitly.
     supabase.from("outreach_drafts").delete().eq("tenant_id", ctx.tenantId),
+    // Pipeline (events cascade), digests and signal research are personal too.
+    supabase.from("applications").delete().eq("tenant_id", ctx.tenantId),
+    supabase.from("daily_digests").delete().eq("tenant_id", ctx.tenantId),
+    supabase.from("signal_requests").delete().eq("tenant_id", ctx.tenantId),
     supabase.from("jobs").delete().eq("tenant_id", ctx.tenantId),
     supabase.from("job_sources").delete().eq("tenant_id", ctx.tenantId),
     supabase.from("company_targets").delete().eq("tenant_id", ctx.tenantId),

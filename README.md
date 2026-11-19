@@ -12,10 +12,10 @@ Private AI Job Scanner + AI Reverse Recruiter, built SaaS-ready (multi-tenant sc
 | --- | --- | --- |
 | 0 — Foundation | Next.js 16 + strict TS, Supabase Auth, protected dashboard, tenants/memberships/profile/audit/consent with RLS, CI | ✅ |
 | 1 — Profile | Private CV upload (PDF/DOCX), text extraction, Claude fact suggestions (optional), confirmed vs suggested vs missing facts, preferences (tracks A–D, hard/soft filters, sectors, excluded employers), export + wipe | ✅ (AI path needs `ANTHROPIC_API_KEY`) |
-| 2 — Job scanner | Greenhouse, SmartRecruiters, Lever (+EU), Ashby per verified company; Jobicy (remote); Adzuna NL (key); manual import; dedupe, status lifecycle, hard gates, manual scan | ✅ (Adzuna needs key; daily schedule not yet) |
+| 2 — Job scanner | Greenhouse, SmartRecruiters, Lever (+EU), Ashby per verified company; Jobicy (remote); Adzuna NL (key); manual import; dedupe, status lifecycle, hard gates, manual scan | ✅ (Adzuna needs key) |
 | 4 — Reverse Recruiter | `/reverse-recruiter`: research brief, contacts from allowed public sources only (no LinkedIn/social/contact-data sites; the cited page is fetched to check the name; emails only when published there), up to two pitch drafts + follow-up with claim warnings; versioned approval enforced by a database trigger (edit → new version → approval revoked; "sent" only for the exact approved version); no sending API | ✅ |
-| 3 — Explainable matching | Career assessment (`/loopbaanprofiel`, user-stated only) + assessment-report upload (work-style facts); tighter title filter (minimum level, excluded title words, agencies); Claude scoring on 6 weighted dimensions with verified evidence, score/classification computed in code, cache by input hash, daily cap (`AI_DAILY_MATCH_CAP`), 👍/👎 feedback as calibration | ✅ (needs `ANTHROPIC_API_KEY`) |
-| 4 — Reverse recruiter | | not started |
+| 3 — Explainable matching | Career assessment (`/loopbaanprofiel`, user-stated only) + assessment-report upload (work-style facts); tighter title filter (minimum level, excluded title words, agencies); Claude scoring on 6 weighted dimensions with verified evidence, score/classification computed in code, cache by input hash, daily cap (`AI_DAILY_MATCH_CAP`), 👍/👎 feedback as calibration | ✅ (free path via Claude subscription; API optional) |
+| 5 — Private pilot | Daily digest (top 3 + to-dos, one row per day, push via the morning Claude task), application pipeline `/sollicitaties` with append-only stage history, weekly "Hidden Opportunities" company signals `/signalen` (researched by the Claude task, cited page checked by the app), pilot dashboard `/pilot` (reliability, feedback precision, funnel, costs); review in `docs/pilot-review.md` | ✅ (30-day pilot running) |
 
 ## Architecture
 
@@ -92,9 +92,9 @@ Without `ANTHROPIC_API_KEY` the app scores every job with deterministic rules (`
 
 ## Daily automation
 
-`.github/workflows/daily-run.yml` runs `scripts/daily-run.ts` every morning (05:17 UTC) and on demand: it scans all approved sources and lets Claude assess new or changed vacancies. It signs in as a dedicated automation user that is a plain `member` of the tenant, so RLS applies; there is no service-role key anywhere. It never sends, applies or contacts anyone, and logs counts only.
+`.github/workflows/daily-run.yml` runs `scripts/daily-run.ts` twice every morning (05:17 and 08:23 UTC) and on demand: it verifies new company boards, scans all approved sources, scores jobs (rules + Claude queue), processes company-signal answers, queues one signal batch per ISO week and stores the daily digest (idempotent per Amsterdam date). It signs in as a dedicated automation user that is a plain `member` of the tenant, so RLS applies; there is no service-role key anywhere. It never sends, applies or contacts anyone, and logs counts only.
 
-Setup (once): create the automation user in Supabase Auth (auto-confirm), add it to `public.memberships` with role `member`, and set the repository secrets `AUTOMATION_EMAIL`, `AUTOMATION_PASSWORD`, `ANTHROPIC_API_KEY`, `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`. Without them the workflow exits cleanly with "not configured".
+Setup (once): create the automation user in Supabase Auth (auto-confirm), add it to `public.memberships` with role `member`, and set the repository secrets `AUTOMATION_EMAIL`, `AUTOMATION_PASSWORD`, `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` (optionally `ANTHROPIC_API_KEY` with `AI_MATCH_MODE=api`). Without them the workflow exits cleanly with "not configured".
 
 ## Privacy
 

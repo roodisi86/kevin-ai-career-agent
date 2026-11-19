@@ -142,6 +142,8 @@ export type CompanyTargetRow = {
   origin: "user" | "suggested_list";
   notes: string | null;
   board_checked_at: string | null;
+  watch_signals: boolean;
+  signals_checked_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -349,6 +351,110 @@ export type OutreachEventRow = {
   event_time: string;
 };
 
+export type SignalRequestRow = {
+  id: string;
+  tenant_id: string;
+  batch_key: string;
+  prompt_text: string;
+  target_refs_json: Json;
+  status: "pending" | "answered" | "processed" | "rejected";
+  output_json: Json | null;
+  result_counts: Json;
+  error: string | null;
+  answered_at: string | null;
+  processed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SignalType =
+  | "leadership_change"
+  | "expansion"
+  | "market_entry"
+  | "acquisition"
+  | "funding"
+  | "restructuring"
+  | "partnership"
+  | "hiring"
+  | "other";
+
+export type CompanySignalRow = {
+  id: string;
+  tenant_id: string;
+  company_target_id: string;
+  request_id: string | null;
+  signal_type: SignalType;
+  headline: string;
+  summary: string | null;
+  relevance: string | null;
+  suggested_action: string | null;
+  source_url: string;
+  source_title: string | null;
+  published_on: string | null;
+  verification_status: "unverified" | "source_checked" | "source_mismatch";
+  user_state: "new" | "useful" | "dismissed";
+  dedupe_key: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApplicationStage =
+  | "prospect"
+  | "applied"
+  | "screening"
+  | "interviewing"
+  | "final_round"
+  | "offer"
+  | "accepted"
+  | "rejected"
+  | "withdrawn"
+  | "on_hold";
+
+export type ApplicationChannel = "direct" | "recruiter" | "referral" | "reverse_recruiting" | "agency" | "other" | "unknown";
+
+export type ApplicationRow = {
+  id: string;
+  tenant_id: string;
+  candidate_id: string;
+  job_id: string | null;
+  company_target_id: string | null;
+  signal_id: string | null;
+  company_name: string;
+  role_title: string;
+  stage: ApplicationStage;
+  channel: ApplicationChannel;
+  contact_name: string | null;
+  job_url: string | null;
+  applied_on: string | null;
+  next_action: string | null;
+  next_action_due: string | null;
+  notes: string | null;
+  closed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ApplicationEventRow = {
+  id: string;
+  tenant_id: string;
+  application_id: string;
+  event_type: string;
+  actor_id: string | null;
+  metadata_json: Json;
+  event_time: string;
+};
+
+export type DailyDigestRow = {
+  id: string;
+  tenant_id: string;
+  digest_date: string;
+  content_json: Json;
+  push_text: string;
+  generated_by: "scheduled" | "manual";
+  created_at: string;
+  updated_at: string;
+};
+
 export type Database = {
   __InternalSupabase: { PostgrestVersion: "14.18" };
   public: {
@@ -382,6 +488,14 @@ export type Database = {
       contacts: TableDef<ContactRow, "tenant_id" | "name" | "source_type" | "origin">;
       outreach_drafts: TableDef<OutreachDraftRow, "tenant_id" | "candidate_id" | "kind" | "language" | "body">;
       outreach_events: TableDef<OutreachEventRow, "tenant_id" | "outreach_draft_id" | "event_type">;
+      signal_requests: TableDef<SignalRequestRow, "tenant_id" | "batch_key" | "prompt_text">;
+      company_signals: TableDef<
+        CompanySignalRow,
+        "tenant_id" | "company_target_id" | "signal_type" | "headline" | "source_url" | "dedupe_key"
+      >;
+      applications: TableDef<ApplicationRow, "tenant_id" | "candidate_id" | "company_name" | "role_title">;
+      application_events: TableDef<ApplicationEventRow, "tenant_id" | "application_id" | "event_type">;
+      daily_digests: TableDef<DailyDigestRow, "tenant_id" | "digest_date" | "push_text">;
     };
     Views: { [_ in never]: never };
     Functions: {
