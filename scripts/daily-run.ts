@@ -15,7 +15,7 @@
 import { createClient } from "@supabase/supabase-js";
 import type { AppContext } from "@/lib/dal";
 import type { Database } from "@/lib/supabase/database.types";
-import { isAiConfigured } from "@/lib/env";
+import { isApiMatchingEnabled } from "@/lib/env";
 import { finishScan, runSourceInScan, startScan } from "@/lib/scanner/service";
 import { pendingMatchJobIds, refreshMatches, scoreJob } from "@/lib/matching/service";
 
@@ -115,7 +115,7 @@ async function main(): Promise<number> {
       );
 
       // 3. Paid API path, only when an ANTHROPIC_API_KEY is configured.
-      if (!isAiConfigured()) continue;
+      if (!isApiMatchingEnabled()) continue;
       const { pending } = await pendingMatchJobIds(ctx);
       const queue = pending.slice(0, MAX_MATCHES_PER_RUN);
       const tally: Record<string, number> = {};

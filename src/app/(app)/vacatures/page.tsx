@@ -4,7 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { SOURCE_LABELS, type JobListRow } from "@/lib/scanner/service";
 import { trackIds, type TrackId } from "@/lib/preferences/schema";
 import { formatDateTime } from "@/lib/time";
-import { getServerEnv, isAiConfigured } from "@/lib/env";
+import { getServerEnv, isApiMatchingEnabled } from "@/lib/env";
 import { pendingMatchJobIds, refreshMatches } from "@/lib/matching/service";
 import { SUBSCRIPTION_MODEL, type MatchResult } from "@/lib/ai/match";
 import { RULES_VERSION } from "@/lib/matching/rules";
@@ -414,7 +414,7 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
         <MatchPanel
           pending={pendingInfo.pending.length}
           total={pendingInfo.total}
-          aiConfigured={isAiConfigured()}
+          aiConfigured={isApiMatchingEnabled()}
           cap={getServerEnv().AI_DAILY_MATCH_CAP}
           hasAssessment={Boolean(assessment?.completed_at)}
           queued={refresh.pendingInQueue}
@@ -430,7 +430,7 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
               ? `${formatDateTime(lastScan.started_at)} · ${t.jobs.scan.status[lastScan.status]}${lastScan.trigger === "scheduled" ? ` · ${t.jobs.scan.triggerScheduled}` : ""}`
               : t.jobs.scan.never}
           </p>
-          <ScanPanel hasSources={(approvedSources ?? 0) > 0} aiConfigured={isAiConfigured()} />
+          <ScanPanel hasSources={(approvedSources ?? 0) > 0} aiConfigured={isApiMatchingEnabled()} />
           <p className="text-sm text-navy-600" data-testid="scheduled-status">
             {lastScheduled ? t.jobs.scan.scheduledActive(formatDateTime(lastScheduled.started_at)) : t.jobs.scan.scheduledInactive}
           </p>

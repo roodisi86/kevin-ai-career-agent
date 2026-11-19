@@ -2,7 +2,8 @@ import "server-only";
 import { createHash } from "node:crypto";
 import type { AppContext } from "@/lib/dal";
 import { audit } from "@/lib/audit";
-import { getServerEnv } from "@/lib/env";
+import { getServerEnv, isApiMatchingEnabled } from "@/lib/env";
+import { refilterReason } from "@/lib/scanner/process";
 import { dbFor } from "@/lib/supabase/db";
 import { asJson, type JobRow } from "@/lib/supabase/database.types";
 import { parseStoredAssessment, assessmentToPromptLines, PROMPT_LABELS, type AssessmentAnswers } from "@/lib/assessment/schema";
@@ -286,6 +287,7 @@ function matchIsCurrent(match: { model: string; input_hash: string }, job: Match
 }
 
 export interface RefreshSummary {
+  filteredOut: number;
   rulesScored: number;
   aiProcessed: number;
   aiRejected: number;
@@ -295,11 +297,11 @@ export interface RefreshSummary {
 
 export async function refreshMatches(ctx: AppContext): Promise<RefreshSummary> {
   const supabase = await dbFor(ctx);
-  const aiByApi = Boolean(getServerEnv().ANTHROPIC_API_KEY);
-  const [{ data: jobs }, { data: matches }, { data: requests }, input] = await Promise.all([
+  const aiByApi = isApiMatchingEnabled();
+  const [{ data: jobRows }, { data: matches }, { data: requests }, input] = await Promise.all([
     supabase
       .from("jobs")
-      .select(`${MATCHABLE_COLUMNS}, country_code`)
+      .select(`${MATCHABLE_COLUMNS}, country_code, company_name, location_text`)
       .eq("tenant_id", ctx.tenantId)
       .neq("status", "closed")
       .is("duplicate_of", null)
@@ -310,8 +312,26 @@ export async function refreshMatches(ctx: AppContext): Promise<RefreshSummary> {
     supabase.from("ai_match_requests").select("id, job_id, input_hash, status, output_json").eq("tenant_id", ctx.tenantId),
     loadCandidateMatchInput(ctx),
   ]);
-  const summary: RefreshSummary = { rulesScored: 0, aiProcessed: 0, aiRejected: 0, queued: 0, pendingInQueue: 0 };
-  if (!jobs) return summary;
+  const summary: RefreshSummary = { filteredOut: 0, rulesScored: 0, aiProcessed: 0, aiRejected: 0, queued: 0, pendingInQueue: 0 };
+  if (!jobRows) return summary;
+  let jobs = jobRows;
+
+  // 0. Apply the current title filter to stored jobs (cheap; catches jobs
+  //    stored before the filter was tightened). Filtered jobs are not scored.
+  const filteredIds = new Set<string>();
+  for (const job of jobs) {
+    const reason = refilterReason(input.prefs, job);
+    if (reason) {
+      filteredIds.add(job.id);
+      await supabase.from("jobs").update({ filtered_out_reason: reason }).eq("tenant_id", ctx.tenantId).eq("id", job.id);
+    }
+  }
+  if (filteredIds.size) {
+    await supabase.from("ai_match_requests").delete().eq("tenant_id", ctx.tenantId).eq("status", "pending").in("job_id", [...filteredIds]);
+    jobs = jobs.filter((j) => !filteredIds.has(j.id));
+  }
+  summary.filteredOut = filteredIds.size;
+
   const matchByJob = new Map((matches ?? []).map((m) => [m.job_id, m]));
   const jobById = new Map(jobs.map((j) => [j.id, j]));
 
