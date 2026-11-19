@@ -64,6 +64,27 @@ describe("anti-hallucination filter", () => {
     expect(kept[0].is_sensitive).toBe(true);
   });
 
+  it("tolerates spelled-out symbols, ranges and PDF hyphenation, but not different numbers", () => {
+    const source = "Led outsourced sales for 30+ concurrent B2B SaaS scale-ups.\nGrew revenue 30–40% for clients in their first enter-\nprise year & beyond.";
+    const verify = (excerpt: string) =>
+      verifySuggestions([{ category: "achievement", statement: excerpt, evidence_excerpt: excerpt }], source).kept.length;
+    expect(verify("Led outsourced sales for 30 plus concurrent B2B SaaS scale ups")).toBe(1);
+    expect(verify("Grew revenue 30 to 40 percent for clients in their first enterprise year and beyond")).toBe(1);
+    expect(verify("Led outsourced sales for 50 plus concurrent B2B SaaS scale ups")).toBe(0);
+    expect(verify("Grew revenue 30 to 45 percent for clients")).toBe(0);
+  });
+
+  it("skips statements that already exist from an earlier run", () => {
+    const fact = {
+      category: "role" as const,
+      statement: "Commercial Director Benelux",
+      evidence_excerpt: "Commercial Director Benelux, Demo Beverages",
+    };
+    const result = verifySuggestions([fact], CV_TEXT, ["commercial director benelux"]);
+    expect(result.kept).toHaveLength(0);
+    expect(result.duplicates).toBe(1);
+  });
+
   it("removes duplicate statements", () => {
     const fact = {
       category: "role" as const,

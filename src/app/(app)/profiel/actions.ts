@@ -247,7 +247,16 @@ export async function suggestFactsFromDocument(_prev: ActionState, formData: For
     return { ok: false, message: null, code: result.reason };
   }
 
-  const { kept, dropped } = verifySuggestions(result.facts, doc.extracted_text);
+  // Skip facts that already exist (re-runs must not create duplicates).
+  const { data: existingFacts } = await supabase
+    .from("candidate_facts")
+    .select("statement")
+    .eq("candidate_id", ctx.candidateId);
+  const { kept, dropped, duplicates } = verifySuggestions(
+    result.facts,
+    doc.extracted_text,
+    (existingFacts ?? []).map((f) => f.statement),
+  );
   if (kept.length > 0) {
     const { error } = await supabase.from("candidate_facts").insert(
       kept.map((fact) => ({
@@ -285,6 +294,7 @@ export async function suggestFactsFromDocument(_prev: ActionState, formData: For
     outcome: "completed",
     kept: kept.length,
     dropped,
+    duplicates,
     summary: summaryCheck.ok ? "suggested" : summaryCheck.reason,
     model: result.model,
     prompt_version: PROMPT_VERSION,

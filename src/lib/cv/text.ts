@@ -26,13 +26,32 @@ export function normalizeForComparison(text: string): string {
 }
 
 /**
- * True when `excerpt` literally occurs in `source` (after normalisation).
+ * Word-level canonical form: the same words and numbers in the same order,
+ * ignoring punctuation, PDF line-break hyphenation and spelled-out symbols
+ * ("30+" = "30 plus", "30–40%" = "30 to 40 percent", "&" = "and").
+ */
+export function canonicalWords(text: string): string {
+  return ` ${text
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/(\w)-\s*\n\s*(\w)/g, "$1$2")
+    .replace(/[\u2010-\u2015]/g, "-")
+    .replace(/(\d)\s*-\s*(\d)/g, "$1 to $2")
+    .replace(/&/g, " and ")
+    .replace(/\+/g, " plus ")
+    .replace(/%/g, " percent ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()} `;
+}
+
+/**
+ * True when `excerpt` occurs in `source` word for word (see canonicalWords).
  * Used to drop AI suggestions whose "evidence" is not actually in the CV.
  */
 export function excerptOccursIn(excerpt: string, source: string): boolean {
-  const e = normalizeForComparison(excerpt);
-  if (e.length < 8) return false;
-  return normalizeForComparison(source).includes(e);
+  const e = canonicalWords(excerpt);
+  if (e.trim().length < 8) return false;
+  return canonicalWords(source).includes(e);
 }
 
 const SENSITIVE_PATTERNS: RegExp[] = [

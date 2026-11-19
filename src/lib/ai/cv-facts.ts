@@ -2,7 +2,7 @@ import { z } from "zod";
 import { excerptOccursIn, isSensitiveClaim, normalizeForComparison } from "@/lib/cv/text";
 import type { FactCategory } from "@/lib/supabase/database.types";
 
-export const PROMPT_VERSION = "cv-facts-v2";
+export const PROMPT_VERSION = "cv-facts-v3";
 
 export const factCategories = [
   "role",
@@ -67,14 +67,20 @@ export function parseFactSuggestions(raw: unknown): ParseResult {
 export function verifySuggestions(
   facts: FactSuggestion[],
   sourceText: string,
-): { kept: VerifiedSuggestion[]; dropped: number } {
-  const seen = new Set<string>();
+  existingStatements: string[] = [],
+): { kept: VerifiedSuggestion[]; dropped: number; duplicates: number } {
+  const seen = new Set<string>(existingStatements.map((s) => normalizeForComparison(s)));
+  let duplicates = 0;
   const kept: VerifiedSuggestion[] = [];
   let dropped = 0;
 
   for (const fact of facts) {
     const key = normalizeForComparison(fact.statement);
-    if (seen.has(key) || !excerptOccursIn(fact.evidence_excerpt, sourceText)) {
+    if (seen.has(key)) {
+      duplicates++;
+      continue;
+    }
+    if (!excerptOccursIn(fact.evidence_excerpt, sourceText)) {
       dropped++;
       continue;
     }
@@ -84,7 +90,7 @@ export function verifySuggestions(
       is_sensitive: isSensitiveClaim(fact.statement) || isSensitiveClaim(fact.evidence_excerpt),
     });
   }
-  return { kept, dropped };
+  return { kept, dropped, duplicates };
 }
 
 /** High-stakes terms a suggested summary may only use when the CV itself uses them. */
@@ -133,7 +139,7 @@ Security rules:
 Extraction rules:
 - Extract only facts that are explicitly stated in the CV. Do not infer, generalise or upgrade claims (for example: sales leadership is NOT P&L responsibility; managing a team is NOT a stated team size).
 - Copy numbers, amounts, percentages, titles and dates exactly as written. If a number is not in the CV, do not produce one.
-- For every fact, evidence_excerpt must be copied verbatim from the CV (a contiguous passage, max 300 characters).
+- For every fact, evidence_excerpt must be copied verbatim from the CV (a contiguous passage, max 300 characters). Keep symbols exactly as written (for example "30+", "40%", "&"); do not spell them out, translate or rephrase the excerpt.
 - Write each statement concisely in the language of the CV.
 - Do not extract contact details, date of birth, age, nationality, gender, health, family situation or other personal characteristics.
 - Return at most 40 facts. Prefer roles, responsibilities, quantified achievements, education, certifications, languages and sector experience.
