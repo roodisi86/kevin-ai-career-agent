@@ -1,0 +1,45 @@
+name: Daily scan and AI assessment
+
+# Every morning: scan approved job sources and let Claude assess new or
+# changed vacancies. Runs as the dedicated automation account (a plain tenant
+# member, so RLS applies); there is no service-role key. It never sends,
+# applies or contacts anyone. Logs contain counts only.
+on:
+  schedule:
+    # 05:17 UTC = 06:17 Amsterdam in winter, 07:17 in summer.
+    - cron: "17 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-run
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      # Public values (the publishable key is shipped to every browser anyway).
+      NEXT_PUBLIC_SUPABASE_URL: https://gmlbeolkbicukryyrerd.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_RSmRKfDaMx9_BocCz-Zm1Q_Lo-Owp9C
+      # Optional overrides (repository variables); empty means the app default.
+      ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+      AI_DAILY_MATCH_CAP: ${{ vars.AI_DAILY_MATCH_CAP }}
+      # Secrets: set by Kevin under GitHub → Settings → Secrets and variables → Actions.
+      AUTOMATION_EMAIL: ${{ secrets.AUTOMATION_EMAIL }}
+      AUTOMATION_PASSWORD: ${{ secrets.AUTOMATION_PASSWORD }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+      ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Scan and assess
+        run: node --conditions=react-server --import tsx scripts/daily-run.ts

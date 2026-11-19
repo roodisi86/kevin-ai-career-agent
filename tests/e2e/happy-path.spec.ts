@@ -12,6 +12,8 @@ const password = process.env.E2E_PASSWORD;
 test.skip(!email || !password, "E2E_EMAIL / E2E_PASSWORD not set — demo account required");
 
 test("login → upload CV → confirm a fact → preferences → export → wipe", async ({ page }) => {
+  // A long journey against hosted Supabase (EU): allow more than the 30 s default.
+  test.setTimeout(120_000);
   await page.goto("/login");
   await page.getByLabel("E-mailadres").fill(email!);
   await page.getByLabel("Wachtwoord").fill(password!);

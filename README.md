@@ -85,6 +85,12 @@ Deployed to the Netlify project `kevin-ai-career-agent` (team `kevinwuytack`): h
 - Deploys are currently triggered manually (no Git continuous deployment yet).
 - Uploads are limited to 5 MB, below Netlify's function payload limit.
 
+## Daily automation
+
+`.github/workflows/daily-run.yml` runs `scripts/daily-run.ts` every morning (05:17 UTC) and on demand: it scans all approved sources and lets Claude assess new or changed vacancies. It signs in as a dedicated automation user that is a plain `member` of the tenant, so RLS applies; there is no service-role key anywhere. It never sends, applies or contacts anyone, and logs counts only.
+
+Setup (once): create the automation user in Supabase Auth (auto-confirm), add it to `public.memberships` with role `member`, and set the repository secrets `AUTOMATION_EMAIL`, `AUTOMATION_PASSWORD`, `ANTHROPIC_API_KEY`, `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`. Without them the workflow exits cleanly with "not configured".
+
 ## Privacy
 
 - CVs and extracted text live only in the private bucket / RLS-protected tables.

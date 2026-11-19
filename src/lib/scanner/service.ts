@@ -1,6 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { dbFor } from "@/lib/supabase/db";
 import type { AppContext } from "@/lib/dal";
 import { audit } from "@/lib/audit";
 import { normalizeEmployerName } from "@/lib/preferences/employers";
@@ -32,7 +32,7 @@ export function adzunaConfigured(): boolean {
 }
 
 export async function loadPreferences(ctx: AppContext): Promise<Preferences> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await dbFor(ctx);
   const { data } = await supabase
     .from("candidate_preferences")
     .select("preferences_json")
@@ -58,8 +58,11 @@ export interface ScanPlan {
 }
 
 /** Starts a scan, or returns the one already running (< 15 min) — idempotent. */
-export async function startScan(ctx: AppContext): Promise<ScanPlan> {
-  const supabase = await createSupabaseServerClient();
+export async function startScan(
+  ctx: AppContext,
+  { trigger = "manual" }: { trigger?: "manual" | "scheduled" } = {},
+): Promise<ScanPlan> {
+  const supabase = await dbFor(ctx);
   const [{ data: sources }, { data: targets }] = await Promise.all([
     supabase
       .from("job_sources")
@@ -91,11 +94,11 @@ export async function startScan(ctx: AppContext): Promise<ScanPlan> {
 
   const { data: scan, error } = await supabase
     .from("scans")
-    .insert({ tenant_id: ctx.tenantId, created_by: ctx.userId, trigger: "manual" })
+    .insert({ tenant_id: ctx.tenantId, created_by: ctx.userId, trigger })
     .select("id")
     .single();
   if (error || !scan) throw new Error("could not start scan");
-  await audit(ctx, "scan.started", "scan", scan.id, { sources: list.length });
+  await audit(ctx, "scan.started", "scan", scan.id, { sources: list.length, trigger });
   return { scanId: scan.id, reused: false, sources: list };
 }
 
@@ -115,9 +118,9 @@ export type SourceRunResult =
   | { ok: true; counts: SourceRunCounts; notes: string[] }
   | { ok: false; error: string; code: string };
 
-async function mergeScanJson(scanId: string, key: "counts_json" | "errors_json", sourceId: string, value: unknown) {
-  const supabase = await createSupabaseServerClient();
-  const { data } = await supabase.from("scans").select("counts_json, errors_json").eq("id", scanId).single();
+async function mergeScanJson(ctx: AppContext, scanId: string, key: "counts_json" | "errors_json", sourceId: string, value: unknown) {
+  const supabase = await dbFor(ctx);
+  const { data } = await supabase.from("scans").select("counts_json, errors_json").eq("tenant_id", ctx.tenantId).eq("id", scanId).single();
   const current = ((data?.[key] ?? {}) as Record<string, unknown>) ?? {};
   const next = asJson({ ...current, [sourceId]: value });
   await supabase
@@ -127,7 +130,7 @@ async function mergeScanJson(scanId: string, key: "counts_json" | "errors_json",
 }
 
 export async function runSourceInScan(ctx: AppContext, scanId: string, sourceId: string): Promise<SourceRunResult> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await dbFor(ctx);
   const [{ data: scan }, { data: source }] = await Promise.all([
     supabase.from("scans").select("id, status").eq("id", scanId).maybeSingle(),
     supabase.from("job_sources").select("*").eq("id", sourceId).maybeSingle(),
@@ -162,7 +165,7 @@ export async function runSourceInScan(ctx: AppContext, scanId: string, sourceId:
       .from("job_sources")
       .update({ last_polled_at: now.toISOString(), last_poll_status: "error", last_poll_error: message.slice(0, 300) })
       .eq("id", source.id);
-    await mergeScanJson(scanId, "errors_json", source.id, { code, message });
+    await mergeScanJson(ctx, scanId, "errors_json", source.id, { code, message });
     return { ok: false, error: message, code };
   }
 
@@ -201,7 +204,7 @@ export async function runSourceInScan(ctx: AppContext, scanId: string, sourceId:
     // Upsert is idempotent: a retried scan never creates a second logical job.
     const { error } = await supabase.from("jobs").upsert(rows, { onConflict: "tenant_id,provider,external_job_id" });
     if (error) {
-      await mergeScanJson(scanId, "errors_json", source.id, { code: "db", message: error.code });
+      await mergeScanJson(ctx, scanId, "errors_json", source.id, { code: "db", message: error.code });
       return { ok: false, error: "could not store jobs", code: "db" };
     }
   }
@@ -241,13 +244,13 @@ export async function runSourceInScan(ctx: AppContext, scanId: string, sourceId:
       last_poll_counts: asJson(counts),
     })
     .eq("id", source.id);
-  await mergeScanJson(scanId, "counts_json", source.id, counts);
+  await mergeScanJson(ctx, scanId, "counts_json", source.id, counts);
   return { ok: true, counts, notes: result.notes };
 }
 
 /** Dedupe across sources, refresh hard gates from current preferences, close the scan. */
 export async function finishScan(ctx: AppContext, scanId: string) {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await dbFor(ctx);
   const prefs = await loadPreferences(ctx);
 
   const { data: jobs } = await supabase
@@ -304,7 +307,7 @@ export function companyKey(name: string): string {
 }
 
 export async function loadSuggestedTargets(ctx: AppContext): Promise<number> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await dbFor(ctx);
   const rows = SUGGESTED_TARGETS.flatMap((group) =>
     group.companies.map((company_name) => ({
       tenant_id: ctx.tenantId,
@@ -329,7 +332,7 @@ export async function verifyCompanyTarget(
   targetId: string,
   careersUrl?: string,
 ): Promise<{ boards: BoardCandidate[]; urlNotSupported: boolean }> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await dbFor(ctx);
   const { data: target } = await supabase.from("company_targets").select("id, company_name").eq("id", targetId).maybeSingle();
   if (!target) throw new Error("not found");
 
@@ -372,7 +375,7 @@ export async function verifyCompanyTarget(
 }
 
 export async function ensurePlatformSources(ctx: AppContext): Promise<void> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await dbFor(ctx);
   await supabase.from("job_sources").upsert(
     [
       { tenant_id: ctx.tenantId, provider: "jobicy" as const, identifier: "europe", display_name: "Jobicy remote (Europa)", verification_status: "verified" as const, verification_detail: "officiële openbare API (bronvermelding verplicht)" },
@@ -395,7 +398,7 @@ export interface ManualJobInput {
 }
 
 export async function importManualJob(ctx: AppContext, input: ManualJobInput): Promise<{ id: string; duplicate: boolean }> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await dbFor(ctx);
   const prefs = await loadPreferences(ctx);
   const key = companyKey(input.company);
   const { data: target } = await supabase
@@ -476,7 +479,7 @@ export type JobListRow = Pick<
 
 /** Re-applies hard gates to all active jobs (after the user changed preferences). */
 export async function regateAll(ctx: AppContext): Promise<number> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await dbFor(ctx);
   const prefs = await loadPreferences(ctx);
   const { data: jobs } = await supabase
     .from("jobs")

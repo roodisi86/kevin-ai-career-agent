@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { Db } from "@/lib/supabase/db";
 
 export interface AppContext {
   userId: string;
@@ -11,6 +12,8 @@ export interface AppContext {
   isDemoTenant: boolean;
   candidateId: string;
   profileVersion: number;
+  /** Set only by the daily automation; the web app uses the cookie session. */
+  db?: Db;
 }
 
 export class NotAllowedError extends Error {

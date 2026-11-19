@@ -338,8 +338,16 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
   if (viewParam === "filtered") query = query.not("filtered_out_reason", "is", null);
   else if (viewParam !== "all") query = query.is("filtered_out_reason", null);
 
-  const [{ data: rows }, { data: lastScan }, { count: approvedSources }, { data: matchRows }, { data: feedbackRows }, { data: assessment }, pendingInfo] =
-    await Promise.all([
+  const [
+    { data: rows },
+    { data: lastScan },
+    { count: approvedSources },
+    { data: matchRows },
+    { data: feedbackRows },
+    { data: assessment },
+    pendingInfo,
+    { data: lastScheduled },
+  ] = await Promise.all([
       query,
       supabase.from("scans").select("*").eq("tenant_id", ctx.tenantId).order("started_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("job_sources").select("id", { count: "exact", head: true }).eq("tenant_id", ctx.tenantId).eq("approved", true),
@@ -350,6 +358,14 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
       supabase.from("match_feedback").select("job_id, label, reasons, note").eq("tenant_id", ctx.tenantId),
       supabase.from("candidate_assessments").select("completed_at").eq("candidate_id", ctx.candidateId).maybeSingle(),
       pendingMatchJobIds(ctx),
+      supabase
+        .from("scans")
+        .select("started_at")
+        .eq("tenant_id", ctx.tenantId)
+        .eq("trigger", "scheduled")
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
 
   const matches = new Map((matchRows ?? []).map((row) => [row.job_id, row as MatchView]));
@@ -399,10 +415,13 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
           <p className="text-sm text-navy-600">
             {t.jobs.scan.last}:{" "}
             {lastScan
-              ? `${formatDateTime(lastScan.started_at)} · ${t.jobs.scan.status[lastScan.status]}`
+              ? `${formatDateTime(lastScan.started_at)} · ${t.jobs.scan.status[lastScan.status]}${lastScan.trigger === "scheduled" ? ` · ${t.jobs.scan.triggerScheduled}` : ""}`
               : t.jobs.scan.never}
           </p>
-          <ScanPanel hasSources={(approvedSources ?? 0) > 0} />
+          <ScanPanel hasSources={(approvedSources ?? 0) > 0} aiConfigured={isAiConfigured()} />
+          <p className="text-sm text-navy-600" data-testid="scheduled-status">
+            {lastScheduled ? t.jobs.scan.scheduledActive(formatDateTime(lastScheduled.started_at)) : t.jobs.scan.scheduledInactive}
+          </p>
           <p className="help">{t.jobs.scan.scheduledNote}</p>
         </section>
 

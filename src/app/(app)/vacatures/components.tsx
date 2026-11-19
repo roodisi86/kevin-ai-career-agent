@@ -4,6 +4,8 @@ import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getDictionary } from "@/lib/i18n";
 import { importJob, type ImportState } from "./actions";
+import { matchSummaryText } from "./match-components";
+import { runMatching } from "./run-matching";
 
 const t = getDictionary();
 
@@ -14,7 +16,7 @@ interface ScanPlan {
 
 type SourceResult = { ok: true; counts: { relevant: number; new: number } } | { ok: false; error: string };
 
-export function ScanPanel({ hasSources }: { hasSources: boolean }) {
+export function ScanPanel({ hasSources, aiConfigured }: { hasSources: boolean; aiConfigured: boolean }) {
   const router = useRouter();
   const [running, setRunning] = useState(false);
   const [log, setLog] = useState<{ label: string; text: string; ok: boolean }[]>([]);
@@ -51,7 +53,17 @@ export function ScanPanel({ hasSources }: { hasSources: boolean }) {
         setProgress({ done: i + 1, total: plan.sources.length });
       }
       await fetch(`/api/scans/${plan.scanId}/finish`, { method: "POST" });
-      setMessage(t.jobs.scan.done);
+      router.refresh();
+      // Then assess new or changed vacancies right away: one click, ranked list.
+      if (aiConfigured) {
+        setMessage(t.jobs.scan.matching);
+        const summary = await runMatching({
+          onProgress: (done, total) => setMessage(`${t.jobs.scan.matching} ${t.jobs.match.running(done, total)}`),
+        });
+        setMessage(`${t.jobs.scan.done} ${matchSummaryText(summary)}`);
+      } else {
+        setMessage(t.jobs.scan.done);
+      }
       router.refresh();
     } catch {
       setMessage(t.common.error);

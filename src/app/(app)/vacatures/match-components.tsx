@@ -5,13 +5,16 @@ import { useRouter } from "next/navigation";
 import { getDictionary } from "@/lib/i18n";
 import { feedbackReasons, type FeedbackLabel } from "@/lib/matching/context";
 import { saveFeedback } from "./actions";
+import { runMatching, type MatchRunSummary } from "./run-matching";
+
+export function matchSummaryText(summary: MatchRunSummary): string {
+  if (summary.stopReason) return m.errors[summary.stopReason];
+  if (summary.failed > 0) return `${m.done(summary.scored)} ${m.errors.failed}`;
+  return m.done(summary.scored);
+}
 
 const t = getDictionary();
 const m = t.jobs.match;
-
-type Outcome = { status: string; reason?: string };
-
-const STOP_STATUSES = new Set(["not_configured", "cap_reached", "no_facts"]);
 
 /** Runs AI assessments one request per job, three at a time, with progress. */
 export function MatchPanel({
@@ -38,43 +41,20 @@ export function MatchPanel({
     setMessage(null);
     stopRef.current = false;
     try {
-      const response = await fetch(`/api/matches/pending${force ? "?force=1" : ""}`);
-      if (!response.ok) throw new Error("pending");
-      const { pending: ids } = (await response.json()) as { pending: string[] };
-      setProgress({ done: 0, total: ids.length });
-      let done = 0;
-      let scored = 0;
-      let failed = 0;
-      let stopReason: string | null = null;
-      const queue = [...ids];
-
-      async function worker() {
-        while (queue.length > 0 && !stopRef.current && !stopReason) {
-          const id = queue.shift()!;
-          try {
-            const res = await fetch(`/api/jobs/${id}/match`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ force }),
-            });
-            const outcome = (await res.json()) as Outcome;
-            if (outcome.status === "scored" || outcome.status === "cached") scored++;
-            else if (STOP_STATUSES.has(outcome.status)) stopReason = outcome.status;
-            else failed++;
-          } catch {
-            failed++;
-          }
-          done++;
-          setProgress({ done, total: ids.length });
+      let lastRefresh = 0;
+      const summary = await runMatching({
+        force,
+        shouldStop: () => stopRef.current,
+        onProgress: (done, total) => {
+          setProgress({ done, total });
           // Refresh every few results so the list fills while the run continues.
-          if (done % 5 === 0) router.refresh();
-        }
-      }
-      await Promise.all([worker(), worker(), worker()]);
-
-      if (stopReason) setMessage(m.errors[stopReason]);
-      else if (failed > 0) setMessage(`${m.done(scored)} ${m.errors.failed}`);
-      else setMessage(m.done(scored));
+          if (done - lastRefresh >= 5) {
+            lastRefresh = done;
+            router.refresh();
+          }
+        },
+      });
+      setMessage(matchSummaryText(summary));
       router.refresh();
     } catch {
       setMessage(t.common.error);

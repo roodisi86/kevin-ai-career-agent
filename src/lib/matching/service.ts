@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import type { AppContext } from "@/lib/dal";
 import { audit } from "@/lib/audit";
 import { getServerEnv } from "@/lib/env";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { dbFor } from "@/lib/supabase/db";
 import { asJson, type JobRow } from "@/lib/supabase/database.types";
 import { parseStoredAssessment, assessmentToPromptLines, PROMPT_LABELS } from "@/lib/assessment/schema";
 import { scoreJobWithClaude } from "@/lib/ai/claude";
@@ -32,7 +32,7 @@ export interface CandidateMatchInput {
 }
 
 export async function loadCandidateMatchInput(ctx: AppContext): Promise<CandidateMatchInput> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await dbFor(ctx);
   const [{ data: facts }, { data: profile }, { data: assessment }, prefs, { data: feedback }] = await Promise.all([
     supabase
       .from("candidate_facts")
@@ -106,7 +106,7 @@ function hashFor(job: Pick<MatchableJob, "raw_hash" | "gate_status">, input: Can
 
 /** Active, visible, primary jobs whose match is missing or stale. */
 export async function pendingMatchJobIds(ctx: AppContext, { force = false } = {}): Promise<{ pending: string[]; total: number }> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await dbFor(ctx);
   const env = getServerEnv();
   const [{ data: jobs }, { data: matches }, input] = await Promise.all([
     supabase
@@ -140,7 +140,7 @@ function limitedEvidence(job: MatchableJob): boolean {
 }
 
 export async function scoreJob(ctx: AppContext, jobId: string, { force = false } = {}): Promise<ScoreOutcome> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await dbFor(ctx);
   const env = getServerEnv();
   if (!env.ANTHROPIC_API_KEY) return { status: "not_configured" };
 

@@ -1,5 +1,5 @@
 import "server-only";
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { dbFor } from "@/lib/supabase/db";
 import type { AppContext } from "@/lib/dal";
 
 export type AuditAction =
@@ -42,7 +42,7 @@ export async function audit(
   resourceId: string | null,
   metadata: SafeMetadata = {},
 ): Promise<void> {
-  const supabase = await createSupabaseServerClient();
+  const supabase = await dbFor(ctx);
   const { error } = await supabase.from("audit_events").insert({
     tenant_id: ctx.tenantId,
     actor_id: ctx.userId,
