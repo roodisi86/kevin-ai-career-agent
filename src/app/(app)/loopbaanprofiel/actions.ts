@@ -5,6 +5,7 @@ import { getAppContext } from "@/lib/dal";
 import { audit } from "@/lib/audit";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { asJson } from "@/lib/supabase/database.types";
+import { refreshMatches } from "@/lib/matching/service";
 import { ASSESSMENT_SCHEMA_VERSION, AssessmentAnswersSchema, assessmentProgress } from "@/lib/assessment/schema";
 
 export type SaveAssessmentState = { ok: boolean; error: "invalid" | "db" | null; savedAt: string | null };
@@ -40,6 +41,7 @@ export async function saveAssessment(_prev: SaveAssessmentState, formData: FormD
 
   // Only counts, never the answers themselves.
   await audit(ctx, "assessment.saved", "candidate_assessment", data.id, { answered });
+  await refreshMatches(ctx);
   revalidatePath("/loopbaanprofiel");
   revalidatePath("/vacatures");
   revalidatePath("/dashboard");

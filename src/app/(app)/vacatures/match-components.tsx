@@ -23,12 +23,14 @@ export function MatchPanel({
   aiConfigured,
   cap,
   hasAssessment,
+  queued,
 }: {
   pending: number;
   total: number;
   aiConfigured: boolean;
   cap: number;
   hasAssessment: boolean;
+  queued: number;
 }) {
   const router = useRouter();
   const [running, setRunning] = useState(false);
@@ -63,10 +65,19 @@ export function MatchPanel({
     }
   }
 
+  if (!aiConfigured) {
+    return (
+      <div className="space-y-2" data-testid="free-matching">
+        <p className="text-sm text-navy-800">{m.freeIntro}</p>
+        {!hasAssessment && <p className="text-sm text-amber-800">{m.noAssessment}</p>}
+        <p className="text-sm text-navy-600">{m.queued(queued)}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       <p className="text-sm text-navy-800">{m.panelIntro}</p>
-      {!aiConfigured && <p className="text-sm text-rose-800">{m.errors.not_configured}</p>}
       {!hasAssessment && <p className="text-sm text-amber-800">{m.noAssessment}</p>}
       <p className="text-sm text-navy-600">{pending > 0 ? m.pending(pending, total) : m.upToDate}</p>
       <div className="flex flex-wrap items-center gap-3">

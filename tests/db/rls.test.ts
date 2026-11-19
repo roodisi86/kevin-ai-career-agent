@@ -380,6 +380,10 @@ describe("assessment, match and feedback isolation", () => {
           tenantA,
           id,
         ]);
+        await c.query(
+          `insert into public.ai_match_requests (tenant_id, job_id, input_hash, prompt_text) values ($1, $2, repeat('9', 64), 'DEMO prompt')`,
+          [tenantA, id],
+        );
         return id;
       },
       { commit: true },
@@ -387,7 +391,7 @@ describe("assessment, match and feedback isolation", () => {
 
     const visible = await asUser(db.pool, userB, async (c) => {
       const counts = await Promise.all(
-        ["candidate_assessments", "job_matches", "match_feedback"].map((t) =>
+        ["candidate_assessments", "job_matches", "match_feedback", "ai_match_requests"].map((t) =>
           c.query(`select 1 from public.${t}`).then((r) => r.rowCount ?? 0),
         ),
       );
@@ -399,6 +403,7 @@ describe("assessment, match and feedback isolation", () => {
       `insert into public.job_matches (tenant_id, job_id, score, classification, result_json, input_hash, profile_version, model, prompt_version)
        values ($1, '${jobId}', 99, 'top_match', '{}', repeat('a', 64), 1, 'x', 'x')`,
       `insert into public.match_feedback (tenant_id, job_id, label) values ($1, '${jobId}', 'bad')`,
+      `insert into public.ai_match_requests (tenant_id, job_id, input_hash, prompt_text) values ($1, '${jobId}', repeat('8', 64), 'x')`,
       `insert into public.candidate_assessments (tenant_id, candidate_id) values ($1, '${candidateA}')`,
     ]) {
       const code = await expectPgError(asUser(db.pool, userB, (c) => c.query(sql, [tenantB])));

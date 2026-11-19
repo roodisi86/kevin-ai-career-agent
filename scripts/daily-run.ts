@@ -17,7 +17,7 @@ import type { AppContext } from "@/lib/dal";
 import type { Database } from "@/lib/supabase/database.types";
 import { isAiConfigured } from "@/lib/env";
 import { finishScan, runSourceInScan, startScan } from "@/lib/scanner/service";
-import { pendingMatchJobIds, scoreJob } from "@/lib/matching/service";
+import { pendingMatchJobIds, refreshMatches, scoreJob } from "@/lib/matching/service";
 
 const MAX_MATCHES_PER_RUN = 120;
 const STOP = new Set(["not_configured", "cap_reached", "no_facts"]);
@@ -108,11 +108,14 @@ async function main(): Promise<number> {
         `${label}: scan ${finished.status} — ${ok} sources ok, ${failed} failed, ${relevant} relevant, ${fresh} new, ${finished.duplicates} duplicates`,
       );
 
-      // 2. AI assessment of new or changed vacancies (cached otherwise).
-      if (!isAiConfigured()) {
-        console.log(`${label}: AI assessment skipped (no ANTHROPIC_API_KEY)`);
-        continue;
-      }
+      // 2. Free assessment: rules for every job, the best queued for Claude.
+      const refreshed = await refreshMatches(ctx);
+      console.log(
+        `${label}: rules scored ${refreshed.rulesScored}, Claude answers processed ${refreshed.aiProcessed} (rejected ${refreshed.aiRejected}), queued ${refreshed.queued}, waiting ${refreshed.pendingInQueue}`,
+      );
+
+      // 3. Paid API path, only when an ANTHROPIC_API_KEY is configured.
+      if (!isAiConfigured()) continue;
       const { pending } = await pendingMatchJobIds(ctx);
       const queue = pending.slice(0, MAX_MATCHES_PER_RUN);
       const tally: Record<string, number> = {};

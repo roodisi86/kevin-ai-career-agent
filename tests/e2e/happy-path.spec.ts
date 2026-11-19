@@ -86,10 +86,10 @@ test("login → upload CV → confirm a fact → preferences → export → wipe
   await expect(job).toHaveCount(1);
   await expect(job.getByText(/handmatig toegevoegd/)).toBeVisible();
   await expect(job.getByText("Valt af op harde eis")).toHaveCount(0);
-  // Without an AI key the matching degrades gracefully: clear message, job not scored.
-  await expect(page.getByText(/AI is niet ingesteld/).first()).toBeVisible();
-  await expect(page.getByRole("button", { name: /met AI/ })).toBeDisabled();
-  await expect(job.getByText("Nog niet beoordeeld")).toBeVisible();
+  // Without an AI key the free path scores every job with rules right away.
+  await expect(page.getByTestId("free-matching")).toBeVisible();
+  await expect(job.getByTestId("match-source")).toHaveText("Regels");
+  await expect(job.getByText(/\/100/)).toBeVisible();
   await job.getByRole("button", { name: "Interessant" }).click();
   await expect(page.getByTestId("job").filter({ hasText: "DEMO Country Manager Benelux" }).getByRole("button", { name: "Interessant" })).toHaveAttribute("aria-pressed", "true");
 

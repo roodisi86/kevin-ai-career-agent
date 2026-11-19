@@ -85,6 +85,10 @@ Deployed to the Netlify project `kevin-ai-career-agent` (team `kevinwuytack`): h
 - Deploys are currently triggered manually (no Git continuous deployment yet).
 - Uploads are limited to 5 MB, below Netlify's function payload limit.
 
+## Free matching path (no paid API)
+
+Without `ANTHROPIC_API_KEY` the app scores every job with deterministic rules (`src/lib/matching/rules.ts`: the same six dimensions from literal signals in the vacancy, the career assessment, preferences and thumbs up/down) and queues the most promising ones in `ai_match_requests`. A scheduled Claude task, run under the user's own Claude subscription, answers the queue with the same prompt; the app validates and verifies every answer with the same code as the API path before it becomes a match. With an API key the app calls Claude directly instead.
+
 ## Daily automation
 
 `.github/workflows/daily-run.yml` runs `scripts/daily-run.ts` every morning (05:17 UTC) and on demand: it scans all approved sources and lets Claude assess new or changed vacancies. It signs in as a dedicated automation user that is a plain `member` of the tenant, so RLS applies; there is no service-role key anywhere. It never sends, applies or contacts anyone, and logs counts only.

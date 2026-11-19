@@ -489,7 +489,14 @@ export const nl = {
       attributionAdzuna: "Jobs by Adzuna",
     },
     match: {
-      panelTitle: "AI-beoordeling",
+      panelTitle: "Beoordeling",
+      freeIntro:
+        "Gratis beoordeling actief. Elke vacature krijgt direct een score op 6 punten op basis van signalen in de tekst, je loopbaanprofiel, je voorkeuren en je 👍/👎. Elke ochtend beoordeelt Claude via je eigen Claude-abonnement de beste kandidaten inhoudelijk; die krijgen het label 'Claude'. Bewijs dat niet letterlijk in de vacature of in je bevestigde feiten staat, wordt weggegooid.",
+      queued: (n: number) => (n > 0 ? `${n} vacature(s) wachten op de ochtendbeoordeling door Claude.` : "Geen vacatures in de wachtrij voor Claude."),
+      sourceRules: "Regels",
+      sourceSubscription: "Claude",
+      sourceApi: "Claude (API)",
+      feedbackAdjusted: (n: number) => `${n > 0 ? "+" : ""}${n} door je feedback`,
       panelIntro:
         "Claude beoordeelt elke vacature op 6 punten tegen je bevestigde feiten, je loopbaanprofiel en je voorkeuren. De score en de indeling berekent de app zelf; bewijs dat niet letterlijk in de vacature of in je bevestigde feiten staat, wordt weggegooid.",
       pending: (n: number, total: number) => `${n} van ${total} vacatures nog te beoordelen.`,

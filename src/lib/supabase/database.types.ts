@@ -259,6 +259,22 @@ export type MatchFeedbackRow = {
   updated_at: string;
 };
 
+export type AiMatchRequestRow = {
+  id: string;
+  tenant_id: string;
+  job_id: string;
+  input_hash: string;
+  priority: number;
+  prompt_text: string;
+  status: "pending" | "answered" | "processed" | "rejected" | "stale";
+  output_json: Json | null;
+  error: string | null;
+  answered_at: string | null;
+  processed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Database = {
   __InternalSupabase: { PostgrestVersion: "14.18" };
   public: {
@@ -287,6 +303,7 @@ export type Database = {
         "tenant_id" | "job_id" | "score" | "classification" | "result_json" | "input_hash" | "profile_version" | "model" | "prompt_version"
       >;
       match_feedback: TableDef<MatchFeedbackRow, "tenant_id" | "job_id" | "label">;
+      ai_match_requests: TableDef<AiMatchRequestRow, "tenant_id" | "job_id" | "input_hash" | "prompt_text">;
     };
     Views: { [_ in never]: never };
     Functions: {

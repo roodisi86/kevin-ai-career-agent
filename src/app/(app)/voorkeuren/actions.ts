@@ -6,6 +6,7 @@ import { audit } from "@/lib/audit";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { PreferencesSchema } from "@/lib/preferences/schema";
 import { regateAll } from "@/lib/scanner/service";
+import { refreshMatches } from "@/lib/matching/service";
 
 export type SavePreferencesState = { ok: boolean; error: "invalid" | "db" | null; savedAt: string | null };
 
@@ -51,6 +52,7 @@ export async function savePreferences(
   });
   // Hard requirements may have changed: re-evaluate stored jobs right away.
   await regateAll(ctx);
+  await refreshMatches(ctx);
   revalidatePath("/voorkeuren");
   revalidatePath("/vacatures");
   revalidatePath("/dashboard");

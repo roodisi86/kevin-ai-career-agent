@@ -5,8 +5,9 @@ import { SOURCE_LABELS, type JobListRow } from "@/lib/scanner/service";
 import { trackIds, type TrackId } from "@/lib/preferences/schema";
 import { formatDateTime } from "@/lib/time";
 import { getServerEnv, isAiConfigured } from "@/lib/env";
-import { pendingMatchJobIds } from "@/lib/matching/service";
-import type { MatchResult } from "@/lib/ai/match";
+import { pendingMatchJobIds, refreshMatches } from "@/lib/matching/service";
+import { SUBSCRIPTION_MODEL, type MatchResult } from "@/lib/ai/match";
+import { RULES_VERSION } from "@/lib/matching/rules";
 import type { JobMatchRow, MatchFeedbackRow } from "@/lib/supabase/database.types";
 import { setJobState } from "./actions";
 import { ImportForm, ScanPanel } from "./components";
@@ -40,7 +41,7 @@ function formatSalary(salary: Record<string, unknown>): string | null {
   return `${String(salary.currency ?? "")} ${range}${interval}${salary.source === "text" ? " (uit tekst)" : ""}`.trim();
 }
 
-type MatchView = Pick<JobMatchRow, "job_id" | "score" | "classification" | "limited_evidence" | "result_json" | "scored_at">;
+type MatchView = Pick<JobMatchRow, "job_id" | "score" | "classification" | "limited_evidence" | "result_json" | "scored_at" | "model">;
 type FeedbackView = Pick<MatchFeedbackRow, "job_id" | "label" | "reasons" | "note">;
 
 const CLASS_STYLE = {
@@ -69,7 +70,8 @@ function MatchBlock({ match, feedback, jobId }: { match: MatchView | undefined; 
   if (!match) {
     return <p className="text-sm text-navy-600">{mt.notScored}</p>;
   }
-  const r = match.result_json as unknown as MatchResult;
+  const r = match.result_json as unknown as MatchResult & { feedbackAdjustment?: number };
+  const feedbackAdjustment = r.feedbackAdjustment ?? 0;
   const removed = r.dropped ? r.dropped.quotes + r.dropped.claims + r.dropped.texts : 0;
   return (
     <div className="space-y-3 rounded-lg bg-sand-50 p-3" data-testid="match">
@@ -79,8 +81,12 @@ function MatchBlock({ match, feedback, jobId }: { match: MatchView | undefined; 
           <span className="text-sm font-normal text-navy-600">/100</span>
         </span>
         <span className={`badge ${CLASS_STYLE[match.classification]}`}>{mt.classification[match.classification]}</span>
+        <span className="badge bg-sand-200 text-navy-800" data-testid="match-source">
+          {match.model === RULES_VERSION ? mt.sourceRules : match.model === SUBSCRIPTION_MODEL ? mt.sourceSubscription : mt.sourceApi}
+        </span>
         {match.limited_evidence && <span className="badge bg-amber-100 text-amber-800">{mt.limited}</span>}
         {feedback && <span className="badge bg-navy-800 text-white">{mt.feedbackGiven[feedback.label]}</span>}
+        {feedbackAdjustment !== 0 && <span className="text-xs text-navy-600">{mt.feedbackAdjusted(feedbackAdjustment)}</span>}
       </div>
       {r.fitSummary && <p className="text-sm text-navy-800">{r.fitSummary}</p>}
       <details>
@@ -319,6 +325,8 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
   const q = one(params.q).slice(0, 100);
   const viewParam = one(params.view);
 
+  // Process answers from the Claude task and score any new jobs before listing.
+  const refresh = await refreshMatches(ctx);
   const supabase = await createSupabaseServerClient();
   let query = supabase
     .from("jobs")
@@ -353,7 +361,7 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
       supabase.from("job_sources").select("id", { count: "exact", head: true }).eq("tenant_id", ctx.tenantId).eq("approved", true),
       supabase
         .from("job_matches")
-        .select("job_id, score, classification, limited_evidence, result_json, scored_at")
+        .select("job_id, score, classification, limited_evidence, result_json, scored_at, model")
         .eq("tenant_id", ctx.tenantId),
       supabase.from("match_feedback").select("job_id, label, reasons, note").eq("tenant_id", ctx.tenantId),
       supabase.from("candidate_assessments").select("completed_at").eq("candidate_id", ctx.candidateId).maybeSingle(),
@@ -380,7 +388,10 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
     : all;
   const inView = (j: JobListRow) => {
     const match = matches.get(j.id);
-    if (view === "recommended") return Boolean(match && match.classification !== "reject");
+    // Recommended = not rejected, plus anything the user chose or marked themselves.
+    if (view === "recommended") {
+      return Boolean(match && match.classification !== "reject") || j.provider === "manual" || j.user_state === "interesting" || j.user_state === "later";
+    }
     if (view === "unscored") return !match;
     if (view === "rejected") return match?.classification === "reject";
     return true;
@@ -406,6 +417,7 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
           aiConfigured={isAiConfigured()}
           cap={getServerEnv().AI_DAILY_MATCH_CAP}
           hasAssessment={Boolean(assessment?.completed_at)}
+          queued={refresh.pendingInQueue}
         />
       </section>
 

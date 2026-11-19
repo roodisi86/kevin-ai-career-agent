@@ -1,5 +1,6 @@
 import { json, Uuid, withContext } from "@/lib/api";
 import { finishScan } from "@/lib/scanner/service";
+import { refreshMatches } from "@/lib/matching/service";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -8,5 +9,10 @@ export const maxDuration = 60;
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!Uuid.safeParse(id).success) return json({ error: "not_found" }, 404);
-  return withContext(async (ctx) => json(await finishScan(ctx, id)));
+  return withContext(async (ctx) => {
+    const result = await finishScan(ctx, id);
+    // Free assessment of every new job right away (rules; Claude queue for the best).
+    const matches = await refreshMatches(ctx);
+    return json({ ...result, matches });
+  });
 }

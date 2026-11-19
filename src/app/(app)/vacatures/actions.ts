@@ -7,6 +7,7 @@ import { audit } from "@/lib/audit";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { importManualJob } from "@/lib/scanner/service";
 import { allFeedbackReasons, feedbackReasons } from "@/lib/matching/context";
+import { refreshMatches } from "@/lib/matching/service";
 
 const StateSchema = z.object({
   id: z.uuid(),
@@ -46,6 +47,7 @@ export async function importJob(_prev: ImportState, formData: FormData): Promise
   if (!parsed.success) return { ok: false, code: "invalid" };
   try {
     const result = await importManualJob(ctx, parsed.data);
+    await refreshMatches(ctx);
     revalidatePath("/vacatures");
     return { ok: true, code: result.duplicate ? "updated" : null };
   } catch {
@@ -95,6 +97,8 @@ export async function saveFeedback(input: unknown): Promise<FeedbackState> {
     if (error) return { ok: false, error: true };
   }
   await audit(ctx, "match.feedback", "job", jobId, { label, reasons: reasons.length });
+  // Feedback recalibrates the rules right away (Claude results are kept).
+  await refreshMatches(ctx);
   revalidatePath("/vacatures");
   return { ok: true, error: false };
 }

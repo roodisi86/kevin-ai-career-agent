@@ -353,7 +353,7 @@ const sanitize = (text: string) => text.replace(/<\/?(job|job_description|confir
 
 export const MAX_DESCRIPTION_CHARS = 12_000;
 
-export function buildMatchUserMessage(input: MatchPromptInput): string {
+export function buildMatchUserMessage(input: MatchPromptInput, { maxDescriptionChars = MAX_DESCRIPTION_CHARS } = {}): string {
   const block = (tag: string, lines: string[]) => `<${tag}>\n${lines.length ? lines.join("\n") : "(none)"}\n</${tag}>`;
   const profileLines = [
     input.profile.headline ? `Headline: ${input.profile.headline}` : "",
@@ -370,7 +370,7 @@ export function buildMatchUserMessage(input: MatchPromptInput): string {
     ...job.signalLines,
     ...job.gateLines,
   ].map(sanitize);
-  const description = job.description ? sanitize(job.description).slice(0, MAX_DESCRIPTION_CHARS) : "(no description available)";
+  const description = job.description ? sanitize(job.description).slice(0, maxDescriptionChars) : "(no description available)";
 
   return [
     "Assess this vacancy for the candidate.",
@@ -394,4 +394,26 @@ export function matchInputHash(parts: { model: string; candidate: unknown; jobRa
 /** The text evidence quotes are checked against. */
 export function jobEvidenceText(job: { title: string; company: string; location: string | null; description: string | null }): string {
   return [job.title, job.company, job.location ?? "", (job.description ?? "").slice(0, MAX_DESCRIPTION_CHARS)].join("\n");
+}
+
+/** Model label for assessments answered through the user's Claude subscription. */
+export const SUBSCRIPTION_MODEL = "claude-abonnement";
+
+/** JSON shape the subscription task must return (same as the API's structured output). */
+export const OUTPUT_FORMAT_HELP = `Return ONLY one JSON object, no prose, with exactly these keys:
+{
+  "dimensions": [ six objects, one per key in this order: ${dimensionKeys.join(", ")};
+                  each {"key": string, "rating": integer 0-5, "job_quotes": [string], "fact_ids": [string], "note": string} ],
+  "fit_summary": string,
+  "confirmed_fit": [{"claim": string, "fact_ids": [string]}],
+  "transferable": [{"claim": string, "fact_ids": [string]}],
+  "gaps": [string],
+  "unknowns": [string],
+  "recruiter_doubts": [string],
+  "pitch_angle": string
+}`;
+
+/** Full, self-contained prompt for one queued assessment (instructions + data). */
+export function buildQueuedPrompt(userMessage: string): string {
+  return `<instructions>\n${MATCH_SYSTEM_PROMPT}\n\n${OUTPUT_FORMAT_HELP}\n</instructions>\n\n${userMessage}`;
 }
