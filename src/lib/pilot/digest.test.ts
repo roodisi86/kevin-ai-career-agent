@@ -17,7 +17,7 @@ const base: DigestMatchCandidate = {
   userState: "new",
   inPipeline: false,
 };
-const m = (over: Partial<DigestMatchCandidate>): DigestMatchCandidate => ({ ...base, ...over });
+const m = (over: Partial<DigestMatchCandidate>): DigestMatchCandidate => ({ ...base, title: `DEMO role ${over.jobId ?? "x"}`, ...over });
 const NOW = "2026-11-20T06:00:00Z";
 
 describe("digest top picks", () => {
@@ -45,6 +45,19 @@ describe("digest top picks", () => {
     expect(top[0].status).toBe("uncertain");
   });
 
+  it("prefers Claude-checked verdicts over rules-only ones and lists a role posted twice once", () => {
+    const top = pickTop(
+      [
+        m({ jobId: "rules", source: "rules", score: 95 }),
+        m({ jobId: "claude", source: "claude", score: 74, title: "DEMO CCO" }),
+        m({ jobId: "dup1", source: "rules", score: 90, title: "DEMO Twin", company: "DEMO Two" }),
+        m({ jobId: "dup2", source: "rules", score: 90, title: "DEMO Twin", company: "DEMO Two" }),
+      ],
+      NOW,
+    );
+    expect(top.map((t) => t.jobId)).toEqual(["claude", "rules", "dup1"]);
+  });
+
   it("marks vacancies first seen in the last 36 hours as new", () => {
     const top = pickTop([m({ jobId: "new" }), m({ jobId: "old", firstSeenAt: "2026-11-10T06:00:00Z", score: 60 })], NOW);
     expect(top.find((t) => t.jobId === "new")?.isNew).toBe(true);
@@ -68,7 +81,7 @@ describe("digest push text", () => {
     const content = buildDigest(input);
     const text = digestPushText(content);
     expect(text).toContain("dagoverzicht vr 20 nov");
-    expect(text).toContain("1. DEMO Commercial Director · DEMO Co — 81 (topmatch, nieuw)");
+    expect(text).toContain("1. DEMO role a · DEMO Co — 81 (topmatch, nieuw)");
     expect(text).toContain("2 concept(en) te controleren");
     expect(text).toContain("1 opvolging(en)");
     expect(text).toContain("1 sollicitatie-actie(s)");

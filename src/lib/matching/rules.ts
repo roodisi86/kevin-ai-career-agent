@@ -12,7 +12,10 @@ import { titleLevel } from "@/lib/scanner/relevance";
  * rules never claim experience on the candidate's behalf.
  */
 
-export const RULES_VERSION = "rules-v1";
+export const RULES_VERSION = "rules-v2";
+
+/** True for any version of the rules scorer (older rows keep their old version until rescored). */
+export const isRulesModel = (model: string) => model.startsWith("rules-");
 
 const DIMENSION_NL: Record<DimensionKey, string> = {
   responsibility_seniority: "verantwoordelijkheid en niveau",
@@ -60,6 +63,29 @@ const HUNTER_MINUS: Lang = [
 ];
 const OPERATIONAL_MINUS: Lang = ["operationeel", "day to day operations", "shift", "store", "winkel", "filiaal", "warehouse", "magazijn"];
 const SMALL_COMPANY: Lang = ["mkb", "klein team", "small team", "kleine organisatie", "familiebedrijf", "start up", "startup", "eenmanszaak"];
+/** Title words for functions outside commercial leadership (finance, HR, legal, tech…). */
+const NON_COMMERCIAL_TITLE: Lang = [
+  "finance", "financial", "financieel", "controller", "cfo", "accounting", "accountant", "tax", "audit", "treasury",
+  "hr", "hrbp", "human resources", "people partner", "people director", "talent", "recruitment", "recruiter", "legal", "counsel",
+  "lawyer", "jurist", "compliance", "engineering", "engineer", "developer", "software", "data", "it", "security", "product manager",
+  "product owner", "designer", "procurement", "purchasing", "inkoop", "supply chain", "logistics", "logistiek", "quality",
+  "research", "scientist", "medical", "clinical", "pharmacist",
+];
+/** Head nouns that make a title commercial even next to such a word ("Head of Sales Engineering"). */
+const COMMERCIAL_HEAD: Lang = [
+  "sales", "business development", "partnerships", "partnership", "country manager", "general manager", "managing director",
+  "chief commercial", "cco", "commercial director", "director commercial", "head of commercial", "revenue", "go to market",
+  "account", "wholesale", "growth",
+];
+
+/** A non-commercial function in the title without a commercial head noun. */
+export function functionMismatch(title: string): string | null {
+  const words = canonicalWords(title);
+  const off = find(words, NON_COMMERCIAL_TITLE);
+  if (off.length === 0 || find(words, COMMERCIAL_HEAD).length > 0) return null;
+  return off[0];
+}
+
 const INTERNATIONAL_PLUS: Lang = ["international", "internationaal", "global", "globaal", "emea", "europe", "europa", "benelux", "multinational"];
 
 const STOPWORDS = new Set(
@@ -167,7 +193,12 @@ export function scoreWithRules({ job, facts, prefs, assessment, feedback }: Rule
   if (assessment.resultsResponsibility === "must" && !find(words, ACTIVITY_KEYWORDS.own_results).length) {
     unknowns.push("Eindverantwoordelijkheid (P&L) wordt niet genoemd; jij wilt dat graag.");
   }
-  notes.responsibility_seniority = `Titelniveau: ${level ?? "onduidelijk"}.${seniorPlus.length ? " Vacature noemt brede verantwoordelijkheid." : ""}${small.length ? " Signalen van een kleine organisatie." : ""}`;
+  const offFunction = functionMismatch(job.title);
+  if (offFunction) {
+    seniority = Math.min(seniority, 2);
+    gaps.push(`De functie lijkt niet commercieel (titel noemt "${offFunction}").`);
+  }
+  notes.responsibility_seniority = `${offFunction ? `Andere functie dan commercieel leiderschap (${offFunction}). ` : ""}Titelniveau: ${level ?? "onduidelijk"}.${seniorPlus.length ? " Vacature noemt brede verantwoordelijkheid." : ""}${small.length ? " Signalen van een kleine organisatie." : ""}`;
   evidence.responsibility_seniority = { quotes: quotes([...seniorPlus, ...small]), facts: [] };
 
   // 2. Strategic / management content
@@ -178,6 +209,7 @@ export function scoreWithRules({ job, facts, prefs, assessment, feedback }: Rule
   content -= Math.min(3, hunter.length * weight("hunter_quota"));
   content -= Math.min(2, operational.length * 0.5 * weight("too_operational"));
   content -= Math.min(2, drainHits.length * 0.75);
+  if (offFunction) content = Math.min(content, 2);
   const hunterNegative = prefs.negativeRoleSignals.length > 0 || assessment.quotaPreference === "no_personal_quota";
   if (hunter.length && hunterNegative) gaps.push("De vacature bevat signalen van een hunter- of quotumrol.");
   if (drainHits.length) gaps.push(`Bevat werk dat jou energie kost: ${drainHits.join(", ")}.`);
@@ -196,7 +228,9 @@ export function scoreWithRules({ job, facts, prefs, assessment, feedback }: Rule
     .map((f) => ({ f, shared: [...tokens(f.statement)].filter((t) => jobTokens.has(t)) }))
     .filter((x) => x.shared.length >= 2)
     .sort((a, b) => b.shared.length - a.shared.length);
-  const transferable = related.length === 0 ? 1 : related.length === 1 ? 2 : related.length <= 3 ? 3 : related.length <= 5 ? 4 : 5;
+  let transferable = related.length === 0 ? 1 : related.length === 1 ? 2 : related.length <= 3 ? 3 : related.length <= 5 ? 4 : 5;
+  // Shared words with a finance/HR/tech vacancy say little about fit.
+  if (offFunction) transferable = Math.min(transferable, 3);
   notes.transferable_results = related.length
     ? `${related.length} bevestigde feiten raken aan wat de vacature vraagt (op basis van gedeelde termen, niet inhoudelijk beoordeeld).`
     : "Geen bevestigde feiten met duidelijke overlap gevonden.";
@@ -221,9 +255,18 @@ export function scoreWithRules({ job, facts, prefs, assessment, feedback }: Rule
   evidence.contract_location_travel = { quotes: [], facts: [] };
 
   // 5. Sector & international fit
-  const sectorText = canonicalWords(`${job.sector ?? ""} ${text}`);
-  const sectorHit = prefs.sectors.find((s) => sectorText.includes(` ${canonicalWords(s.name).trim()} `));
-  let sector = sectorHit ? { boost: 5, neutral: 3, lower: 2, exclude: 0 }[sectorHit.priority] : 3;
+  // The company's own sector is reliable; a sector word somewhere in the vacancy
+  // text ("food delivery", "FMCG clients") is not, so it counts less.
+  const companySector = job.sector ? canonicalWords(`${job.sector} ${job.title}`) : null;
+  const occurrences = (phrase: string) => words.split(` ${phrase} `).length - 1;
+  const sectorHit = prefs.sectors.find((s) => {
+    const name = canonicalWords(s.name).trim();
+    if (!name) return false;
+    if (companySector) return companySector.includes(` ${name} `);
+    return titleWords.includes(` ${name} `) || occurrences(name) >= 2;
+  });
+  const fromText = Boolean(sectorHit && !companySector);
+  let sector = sectorHit ? { boost: fromText ? 4 : 5, neutral: 3, lower: 2, exclude: 0 }[sectorHit.priority] : 3;
   const international = find(words, INTERNATIONAL_PLUS);
   if (job.signals.multinational === "yes" || international.length >= 2) sector += 1;
   if (small.length) sector -= 1;
@@ -231,7 +274,7 @@ export function scoreWithRules({ job, facts, prefs, assessment, feedback }: Rule
   if (avoided.includes("startup") && find(words, ["start up", "startup"]).length) sector -= 1;
   if (avoided.includes("family_owned") && find(words, ["familiebedrijf", "family owned", "family business"]).length) sector -= 1;
   if (sectorHit?.priority === "lower") gaps.push(`Sector met lagere prioriteit voor jou: ${sectorHit.name}.`);
-  notes.sector_international = `${sectorHit ? `Sector: ${sectorHit.name} (${sectorHit.priority}).` : "Sector niet herkend uit je lijst."}${international.length ? " Internationale context." : ""}`;
+  notes.sector_international = `${sectorHit ? `Sector: ${sectorHit.name} (${sectorHit.priority}${fromText ? ", afgeleid uit de vacaturetekst" : ""}).` : "Sector niet herkend uit je lijst."}${international.length ? " Internationale context." : ""}`;
   evidence.sector_international = { quotes: quotes(international.slice(0, 2)), facts: [] };
 
   // 6. Salary & practical fit

@@ -4,7 +4,7 @@ import { audit } from "@/lib/audit";
 import { dbFor } from "@/lib/supabase/db";
 import { asJson, type DailyDigestRow } from "@/lib/supabase/database.types";
 import { SUBSCRIPTION_MODEL } from "@/lib/ai/match";
-import { RULES_VERSION } from "@/lib/matching/rules";
+import { isRulesModel } from "@/lib/matching/rules";
 import { addDays, amsterdamDate } from "@/lib/time";
 import { buildDigest, digestPushText, type DigestContent, type DigestMatchCandidate } from "./digest";
 
@@ -101,7 +101,7 @@ export async function generateDigest(
         score: m.score,
         classification: m.classification,
         fitSummary: typeof result.fitSummary === "string" ? result.fitSummary.slice(0, 400) : null,
-        source: m.model === RULES_VERSION ? "rules" : m.model === SUBSCRIPTION_MODEL ? "claude" : "api",
+        source: isRulesModel(m.model) ? "rules" : m.model === SUBSCRIPTION_MODEL ? "claude" : "api",
         firstSeenAt: job.first_seen_at,
         feedback: feedback.get(job.id) ?? null,
         userState: job.user_state,

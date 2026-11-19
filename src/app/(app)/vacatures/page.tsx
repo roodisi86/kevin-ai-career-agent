@@ -8,7 +8,7 @@ import { formatDateTime } from "@/lib/time";
 import { getServerEnv, isApiMatchingEnabled } from "@/lib/env";
 import { pendingMatchJobIds, refreshMatches } from "@/lib/matching/service";
 import { SUBSCRIPTION_MODEL, type MatchResult } from "@/lib/ai/match";
-import { RULES_VERSION } from "@/lib/matching/rules";
+import { isRulesModel } from "@/lib/matching/rules";
 import type { JobMatchRow, MatchFeedbackRow } from "@/lib/supabase/database.types";
 import { setJobState } from "./actions";
 import { startResearch } from "../reverse-recruiter/actions";
@@ -85,7 +85,7 @@ function MatchBlock({ match, feedback, jobId }: { match: MatchView | undefined; 
         </span>
         <span className={`badge ${CLASS_STYLE[match.classification]}`}>{mt.classification[match.classification]}</span>
         <span className="badge bg-sand-200 text-navy-800" data-testid="match-source">
-          {match.model === RULES_VERSION ? mt.sourceRules : match.model === SUBSCRIPTION_MODEL ? mt.sourceSubscription : mt.sourceApi}
+          {isRulesModel(match.model) ? mt.sourceRules : match.model === SUBSCRIPTION_MODEL ? mt.sourceSubscription : mt.sourceApi}
         </span>
         {match.limited_evidence && <span className="badge bg-amber-100 text-amber-800">{mt.limited}</span>}
         {feedback && <span className="badge bg-navy-800 text-white">{mt.feedbackGiven[feedback.label]}</span>}

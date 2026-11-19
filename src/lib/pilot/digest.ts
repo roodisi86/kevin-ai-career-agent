@@ -68,6 +68,9 @@ export interface DigestContent {
 
 const NEW_WINDOW_MS = 36 * 3_600_000;
 
+const roleKey = (m: DigestMatchCandidate) => `${m.title}|${m.company}`.toLowerCase().replace(/\s+/g, " ").trim();
+const sameRole = (a: DigestMatchCandidate, b: DigestMatchCandidate) => roleKey(a) === roleKey(b);
+
 /** Top recommendations: strong matches Kevin has not acted on or rejected. */
 export function pickTop(matches: DigestMatchCandidate[], now: string, limit = 3): DigestTopItem[] {
   const nowMs = new Date(now).getTime();
@@ -81,12 +84,17 @@ export function pickTop(matches: DigestMatchCandidate[], now: string, limit = 3)
         !m.inPipeline,
     )
     .sort((a, b) => {
-      // Top matches before stretch roles, then score, then the newest vacancy.
+      // Top matches before stretch roles; a Claude-checked verdict before a
+      // rules-only one; then score, then the newest vacancy.
       const cls = (m: DigestMatchCandidate) => (m.classification === "top_match" ? 1 : 0);
+      const checked = (m: DigestMatchCandidate) => (m.source === "rules" ? 0 : 1);
       if (cls(b) !== cls(a)) return cls(b) - cls(a);
+      if (checked(b) !== checked(a)) return checked(b) - checked(a);
       if (b.score !== a.score) return b.score - a.score;
       return b.firstSeenAt.localeCompare(a.firstSeenAt);
     })
+    // The same role posted for several locations counts once.
+    .filter((m, i, all) => all.findIndex((o) => sameRole(o, m)) === i)
     .slice(0, limit)
     .map((m) => ({
       jobId: m.jobId,

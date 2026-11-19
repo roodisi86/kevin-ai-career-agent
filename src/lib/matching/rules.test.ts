@@ -3,7 +3,7 @@ import { emptyAssessment, type AssessmentAnswers } from "@/lib/assessment/schema
 import { defaultPreferences, type Preferences } from "@/lib/preferences/schema";
 import type { PromptFact } from "@/lib/ai/match";
 import { buildQueuedPrompt, parseMatchOutput } from "@/lib/ai/match";
-import { passage, scoreWithRules, titleFeedbackAdjustment, type RulesJob } from "./rules";
+import { functionMismatch, passage, scoreWithRules, titleFeedbackAdjustment, type RulesJob } from "./rules";
 
 /* Synthetic DEMO data only. */
 
@@ -140,5 +140,43 @@ describe("user blockers", () => {
     expect(blocked.score).toBe(0);
     expect(blocked.classification).toBe("reject");
     expect(blocked.gaps[0]).toMatch(/blokkerend/);
+  });
+});
+
+describe("function and sector fit", () => {
+  it("recognises non-commercial functions unless the title has a commercial head noun", () => {
+    expect(functionMismatch("Director of Finance - Ecosystem")).toBe("finance");
+    expect(functionMismatch("HRBP Director - Europe Commercial")).toBe("hrbp");
+    expect(functionMismatch("Head of Sales Engineering")).toBeNull();
+    expect(functionMismatch("Commercial Director Benelux")).toBeNull();
+    expect(functionMismatch("Director Go-to-Market and Revenue Strategy")).toBeNull();
+  });
+
+  it("keeps a strategic-sounding finance role out of the top matches", () => {
+    const finance = scoreWithRules({
+      job: job({
+        title: "Director of Finance - Ecosystem",
+        description:
+          "The Strategic Finance team drives financial performance across our ecosystem of partnerships. Long term strategy, international, P&L.",
+      }),
+      facts: FACTS,
+      prefs,
+      assessment,
+      feedback: [],
+    });
+    expect(finance.classification).not.toBe("top_match");
+    expect(finance.gaps.join(" ")).toContain("niet commercieel");
+  });
+
+  it("does not boost a sector that is only mentioned once in the vacancy text", () => {
+    const once = scoreWithRules({
+      job: job({ sector: null, company: "DEMO Co", title: "Commercial Director", description: "Our platform serves beverages brands among many others. Strategy and partnerships." }),
+      facts: FACTS,
+      prefs,
+      assessment,
+      feedback: [],
+    });
+    const dim = once.dimensions.find((d) => d.key === "sector_international")!;
+    expect(dim.note).toContain("Sector niet herkend");
   });
 });

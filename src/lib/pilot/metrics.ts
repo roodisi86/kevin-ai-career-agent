@@ -2,7 +2,6 @@ import "server-only";
 import type { AppContext } from "@/lib/dal";
 import { dbFor } from "@/lib/supabase/db";
 import { SUBSCRIPTION_MODEL } from "@/lib/ai/match";
-import { RULES_VERSION } from "@/lib/matching/rules";
 import { isApiMatchingEnabled } from "@/lib/env";
 import { amsterdamDate, daysBetween } from "@/lib/time";
 
@@ -105,7 +104,8 @@ export async function loadPilotMetrics(ctx: AppContext, now = new Date()): Promi
       .select("id", { count: "exact", head: true })
       .eq("tenant_id", t)
       .gte("scored_at", since30)
-      .not("model", "in", `(${RULES_VERSION},${SUBSCRIPTION_MODEL})`),
+      .not("model", "like", "rules-%")
+      .neq("model", SUBSCRIPTION_MODEL),
   ]);
 
   const today = amsterdamDate(now);

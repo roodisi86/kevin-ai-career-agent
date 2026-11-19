@@ -8,7 +8,7 @@ import { dbFor } from "@/lib/supabase/db";
 import { asJson, type JobRow } from "@/lib/supabase/database.types";
 import { parseStoredAssessment, assessmentToPromptLines, PROMPT_LABELS, type AssessmentAnswers } from "@/lib/assessment/schema";
 import type { Preferences } from "@/lib/preferences/schema";
-import { RULES_VERSION, scoreWithRules, type RulesFeedback } from "./rules";
+import { isRulesModel, RULES_VERSION, scoreWithRules, type RulesFeedback } from "./rules";
 import { scoreJobWithClaude } from "@/lib/ai/claude";
 import {
   buildMatchUserMessage,
@@ -282,7 +282,7 @@ function rulesHashFor(job: Pick<MatchableJob, "raw_hash" | "gate_status">, input
 }
 
 function matchIsCurrent(match: { model: string; input_hash: string }, job: MatchableJob, input: CandidateMatchInput): boolean {
-  return match.model === RULES_VERSION
+  return isRulesModel(match.model)
     ? match.input_hash === rulesHashFor(job, input)
     : match.input_hash === hashFor(job, input, match.model);
 }
@@ -457,7 +457,7 @@ export async function refreshMatches(ctx: AppContext): Promise<RefreshSummary> {
     const reqByJob = new Map((requests ?? []).map((r) => [r.job_id, r]));
     const candidates = jobs
       .map((job) => ({ job, match: matchByJob.get(job.id) }))
-      .filter(({ job, match }) => match && match.model === RULES_VERSION && match.score >= QUEUE_MIN_SCORE && job.gate_status !== "fail")
+      .filter(({ job, match }) => match && isRulesModel(match.model) && match.score >= QUEUE_MIN_SCORE && job.gate_status !== "fail")
       .sort((a, b) => b.match!.score - a.match!.score)
       .slice(0, QUEUE_LIMIT);
     for (const { job, match } of candidates) {
