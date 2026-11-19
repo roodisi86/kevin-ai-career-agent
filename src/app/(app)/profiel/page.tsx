@@ -4,7 +4,7 @@ import { isAiConfigured } from "@/lib/env";
 import { loadProfileData } from "@/lib/profile/queries";
 import { missingCategories } from "@/lib/profile/summary";
 import { formatDateTime } from "@/lib/time";
-import { deleteDocument, deleteFact, restoreFact } from "./actions";
+import { acceptSummarySuggestion, deleteDocument, deleteFact, discardSummarySuggestion, restoreFact } from "./actions";
 import {
   AddFactForm,
   AiSuggestButton,
@@ -54,7 +54,34 @@ export default async function ProfilePage() {
           <h2 id="basics" className="mb-3 font-semibold">
             {t.profile.basics}
           </h2>
+          {profile.suggested_summary && (
+            <div
+              className="mb-4 rounded-lg border border-dashed border-amber-800/40 bg-amber-100/40 p-4"
+              data-testid="summary-suggestion"
+            >
+              <p className="text-sm font-semibold">{t.profile.suggestion.title}</p>
+              <p className="help mb-2">
+                {t.profile.suggestion.notice} {t.profile.suggestion.proposedOn}{" "}
+                {formatDateTime(profile.suggestion_created_at)}
+              </p>
+              {profile.suggested_headline && <p className="font-medium">{profile.suggested_headline}</p>}
+              <p className="text-sm">{profile.suggested_summary}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <form action={acceptSummarySuggestion}>
+                  <button type="submit" className="btn-teal">
+                    {t.profile.suggestion.accept}
+                  </button>
+                </form>
+                <form action={discardSummarySuggestion}>
+                  <button type="submit" className="btn-secondary">
+                    {t.profile.suggestion.discard}
+                  </button>
+                </form>
+              </div>
+            </div>
+          )}
           <BasicsForm
+            key={profile.updated_at}
             headline={profile.headline ?? ""}
             desiredSeniority={profile.desired_seniority ?? ""}
             summary={profile.summary ?? ""}

@@ -8,10 +8,11 @@ import {
   FactSuggestionsSchema,
   parseFactSuggestions,
   type FactSuggestion,
+  type ProfileSummary,
 } from "@/lib/ai/cv-facts";
 
 export type SuggestFactsResult =
-  | { status: "completed"; facts: FactSuggestion[]; model: string }
+  | { status: "completed"; facts: FactSuggestion[]; profileSummary: ProfileSummary; model: string }
   | { status: "not_configured" }
   | { status: "failed"; reason: "invalid_output" | "api_error" | "quota" | "auth" };
 
@@ -37,7 +38,12 @@ export async function suggestCvFacts(cvText: string): Promise<SuggestFactsResult
     // Validate again ourselves: never trust the shape of model output.
     const parsed = parseFactSuggestions(message.parsed_output ?? null);
     if (!parsed.ok) return { status: "failed", reason: "invalid_output" };
-    return { status: "completed", facts: parsed.facts, model: env.ANTHROPIC_MODEL };
+    return {
+      status: "completed",
+      facts: parsed.facts,
+      profileSummary: parsed.profileSummary,
+      model: env.ANTHROPIC_MODEL,
+    };
   } catch (error) {
     if (error instanceof Anthropic.AuthenticationError || error instanceof Anthropic.PermissionDeniedError) {
       return { status: "failed", reason: "auth" };

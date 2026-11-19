@@ -78,6 +78,13 @@ export const nl = {
     headlineHelp: "Bijvoorbeeld je positionering in één zin.",
     desiredSeniority: "Gewenst niveau",
     summary: "Samenvatting",
+    suggestion: {
+      title: "Voorgestelde kopregel en samenvatting (AI)",
+      notice: "Nog niet gebruikt. Alleen cijfers en claims die letterlijk in je cv staan zijn toegestaan.",
+      accept: "Overnemen",
+      discard: "Weggooien",
+      proposedOn: "Voorgesteld op",
+    },
     upload: {
       title: "Cv uploaden",
       help: "PDF of DOCX, maximaal 5 MB. Het bestand wordt privé opgeslagen in de EU (Frankfurt) en is alleen voor jou zichtbaar.",
@@ -122,8 +129,11 @@ export const nl = {
     ai: {
       notConfigured: "AI-analyse is niet ingesteld (ANTHROPIC_API_KEY ontbreekt). Voeg feiten handmatig toe.",
       capReached: "Het daglimiet voor AI-verzoeken is bereikt. Probeer het morgen opnieuw.",
-      result: (kept: number, dropped: number) =>
-        `${kept} suggestie(s) toegevoegd. ${dropped} voorstel(len) weggelaten omdat het bewijs niet letterlijk in je cv stond.`,
+      result: (kept: number, dropped: number, summary: boolean) =>
+        `${kept} suggestie(s) toegevoegd. ${dropped} voorstel(len) weggelaten omdat het bewijs niet letterlijk in je cv stond.` +
+        (summary
+          ? " Er staat ook een voorgestelde samenvatting klaar bij Basisgegevens."
+          : " Er is geen samenvatting voorgesteld (die moet volledig door je cv gedekt zijn)."),
       failed: {
         invalid_output: "Claude gaf een ongeldig antwoord. Er is niets opgeslagen.",
         api_error: "De AI-dienst is niet bereikbaar. Probeer het later opnieuw.",

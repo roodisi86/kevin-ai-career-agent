@@ -37,7 +37,15 @@ export async function deleteAllCandidateData(_prev: DeleteState, formData: FormD
       .eq("candidate_id", ctx.candidateId),
     supabase
       .from("candidate_profiles")
-      .update({ headline: null, summary: null, desired_seniority: null })
+      .update({
+        headline: null,
+        summary: null,
+        desired_seniority: null,
+        suggested_headline: null,
+        suggested_summary: null,
+        suggestion_document_id: null,
+        suggestion_created_at: null,
+      })
       .eq("id", ctx.candidateId),
   ]);
   const docDelete = await supabase.from("candidate_documents").delete().eq("candidate_id", ctx.candidateId);

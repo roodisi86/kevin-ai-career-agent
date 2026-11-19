@@ -2,7 +2,7 @@ import { z } from "zod";
 import { excerptOccursIn, isSensitiveClaim, normalizeForComparison } from "@/lib/cv/text";
 import type { FactCategory } from "@/lib/supabase/database.types";
 
-export const PROMPT_VERSION = "cv-facts-v1";
+export const PROMPT_VERSION = "cv-facts-v2";
 
 export const factCategories = [
   "role",
@@ -22,9 +22,17 @@ export const FactSuggestionSchema = z.object({
   evidence_excerpt: z.string().trim().min(8).max(400),
 });
 
+export const ProfileSummarySchema = z.object({
+  headline: z.string().trim().max(200),
+  summary: z.string().trim().max(1200),
+});
+
 export const FactSuggestionsSchema = z.object({
   facts: z.array(FactSuggestionSchema).max(40),
+  profile_summary: ProfileSummarySchema,
 });
+
+export type ProfileSummary = z.infer<typeof ProfileSummarySchema>;
 
 export type FactSuggestion = z.infer<typeof FactSuggestionSchema>;
 
@@ -32,7 +40,9 @@ export interface VerifiedSuggestion extends FactSuggestion {
   is_sensitive: boolean;
 }
 
-export type ParseResult = { ok: true; facts: FactSuggestion[] } | { ok: false; error: "invalid_output" };
+export type ParseResult =
+  | { ok: true; facts: FactSuggestion[]; profileSummary: ProfileSummary }
+  | { ok: false; error: "invalid_output" };
 
 /** Validates model output (object or JSON string). Malformed output is rejected, never "repaired". */
 export function parseFactSuggestions(raw: unknown): ParseResult {
@@ -46,7 +56,7 @@ export function parseFactSuggestions(raw: unknown): ParseResult {
   }
   const parsed = FactSuggestionsSchema.safeParse(value);
   if (!parsed.success) return { ok: false, error: "invalid_output" };
-  return { ok: true, facts: parsed.data.facts };
+  return { ok: true, facts: parsed.data.facts, profileSummary: parsed.data.profile_summary };
 }
 
 /**
@@ -77,6 +87,43 @@ export function verifySuggestions(
   return { kept, dropped };
 }
 
+/** High-stakes terms a suggested summary may only use when the CV itself uses them. */
+const GUARDED_TERMS = [
+  /\bp\s?&\s?l\b/i,
+  /\bebitda\b/i,
+  /\bbudget\b/i,
+  /\b(revenue|omzet|turnover)\b/i,
+  /\bheadcount\b/i,
+  /\b(ceo|coo|cco|cro|cfo|managing director|general manager|algemeen directeur)\b/i,
+];
+
+export type SummaryCheck =
+  | { ok: true; summary: ProfileSummary }
+  | { ok: false; reason: "empty" | "unsupported_number" | "unsupported_claim" };
+
+/**
+ * Accepts a suggested headline/summary only when every number and every
+ * high-stakes term (P&L, budget, revenue, C-level titles...) in it also occurs
+ * in the CV text. Otherwise the suggestion is discarded entirely.
+ */
+export function verifyProfileSummary(summary: ProfileSummary, sourceText: string): SummaryCheck {
+  const combined = `${summary.headline}\n${summary.summary}`.trim();
+  if (summary.summary.length < 20) return { ok: false, reason: "empty" };
+
+  const source = normalizeForComparison(sourceText);
+  const sourceDigits = source.replace(/[.,\s]/g, "");
+  const numbers = combined.match(/\d[\d.,]*/g) ?? [];
+  for (const raw of numbers) {
+    const digits = raw.replace(/[.,]/g, "");
+    if (digits.length > 0 && !sourceDigits.includes(digits)) return { ok: false, reason: "unsupported_number" };
+  }
+
+  for (const term of GUARDED_TERMS) {
+    if (term.test(combined) && !term.test(sourceText)) return { ok: false, reason: "unsupported_claim" };
+  }
+  return { ok: true, summary };
+}
+
 export const CV_FACTS_SYSTEM_PROMPT = `You extract verifiable facts about a job candidate from the text of their CV.
 
 Security rules:
@@ -89,7 +136,12 @@ Extraction rules:
 - For every fact, evidence_excerpt must be copied verbatim from the CV (a contiguous passage, max 300 characters).
 - Write each statement concisely in the language of the CV.
 - Do not extract contact details, date of birth, age, nationality, gender, health, family situation or other personal characteristics.
-- Return at most 40 facts. Prefer roles, responsibilities, quantified achievements, education, certifications, languages and sector experience.`;
+- Return at most 40 facts. Prefer roles, responsibilities, quantified achievements, education, certifications, languages and sector experience.
+
+Profile summary:
+- Also propose profile_summary: a neutral one-line headline (max 120 characters) and a factual summary of 2-4 sentences, in the language of the CV.
+- Use only what the CV states. No numbers, titles, responsibilities or results that are not in the CV. No superlatives, no claims about fit or ambitions.
+- If the CV does not support a meaningful summary, return empty strings.`;
 
 export function buildCvFactsUserMessage(cvText: string): string {
   return `Extract candidate facts from the CV below.\n\n<cv_document>\n${cvText}\n</cv_document>`;

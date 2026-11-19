@@ -6,7 +6,7 @@ import { getAppContext } from "@/lib/dal";
 import { audit } from "@/lib/audit";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { isSensitiveClaim } from "@/lib/cv/text";
-import { factCategories, verifySuggestions, PROMPT_VERSION } from "@/lib/ai/cv-facts";
+import { factCategories, verifyProfileSummary, verifySuggestions, PROMPT_VERSION } from "@/lib/ai/cv-facts";
 import { suggestCvFacts } from "@/lib/ai/claude";
 import { getServerEnv } from "@/lib/env";
 
@@ -265,14 +265,71 @@ export async function suggestFactsFromDocument(_prev: ActionState, formData: For
     if (error) return { ok: false, message: null, code: "db" };
   }
 
+  // The proposed headline/summary is stored next to (not over) the user's own
+  // text and only used after explicit acceptance.
+  const summaryCheck = verifyProfileSummary(result.profileSummary, doc.extracted_text);
+  if (summaryCheck.ok) {
+    await supabase
+      .from("candidate_profiles")
+      .update({
+        suggested_headline: summaryCheck.summary.headline || null,
+        suggested_summary: summaryCheck.summary.summary,
+        suggestion_document_id: doc.id,
+        suggestion_created_at: new Date().toISOString(),
+      })
+      .eq("id", ctx.candidateId);
+  }
+
   await supabase.from("candidate_documents").update({ ai_status: "completed" }).eq("id", doc.id);
   await audit(ctx, "ai.facts_suggested", "candidate_document", doc.id, {
     outcome: "completed",
     kept: kept.length,
     dropped,
+    summary: summaryCheck.ok ? "suggested" : summaryCheck.reason,
     model: result.model,
     prompt_version: PROMPT_VERSION,
   });
   refresh();
-  return { ok: true, message: `${kept.length}|${dropped}` };
+  return { ok: true, message: `${kept.length}|${dropped}|${summaryCheck.ok ? 1 : 0}` };
+}
+
+// ---------------------------------------------------------------------------
+// AI-proposed headline/summary: explicit accept or discard
+// ---------------------------------------------------------------------------
+
+const clearedSuggestion = {
+  suggested_headline: null,
+  suggested_summary: null,
+  suggestion_document_id: null,
+  suggestion_created_at: null,
+};
+
+export async function acceptSummarySuggestion(): Promise<void> {
+  const ctx = await getAppContext();
+  const supabase = await createSupabaseServerClient();
+  const { data: profile } = await supabase
+    .from("candidate_profiles")
+    .select("headline, suggested_headline, suggested_summary")
+    .eq("id", ctx.candidateId)
+    .single();
+  if (!profile?.suggested_summary) return;
+
+  const { error } = await supabase
+    .from("candidate_profiles")
+    .update({
+      headline: profile.suggested_headline ?? profile.headline,
+      summary: profile.suggested_summary,
+      ...clearedSuggestion,
+    })
+    .eq("id", ctx.candidateId);
+  if (!error) await audit(ctx, "profile.updated", "candidate_profile", ctx.candidateId, { source: "ai_summary_accepted" });
+  refresh();
+}
+
+export async function discardSummarySuggestion(): Promise<void> {
+  const ctx = await getAppContext();
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.from("candidate_profiles").update(clearedSuggestion).eq("id", ctx.candidateId);
+  if (!error) await audit(ctx, "profile.updated", "candidate_profile", ctx.candidateId, { source: "ai_summary_discarded" });
+  refresh();
 }

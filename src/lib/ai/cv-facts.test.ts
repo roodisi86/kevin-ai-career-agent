@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { buildCvFactsUserMessage, CV_FACTS_SYSTEM_PROMPT, parseFactSuggestions, verifySuggestions } from "./cv-facts";
+import {
+  buildCvFactsUserMessage,
+  CV_FACTS_SYSTEM_PROMPT,
+  parseFactSuggestions,
+  verifyProfileSummary,
+  verifySuggestions,
+} from "./cv-facts";
 
 const CV_TEXT = [
   "DEMO CV - synthetic test data",
@@ -24,6 +30,7 @@ describe("model output validation", () => {
   it("accepts well-formed output given as a string", () => {
     const raw = JSON.stringify({
       facts: [{ category: "role", statement: "Commercial Director Benelux", evidence_excerpt: "Commercial Director Benelux" }],
+      profile_summary: { headline: "", summary: "" },
     });
     const result = parseFactSuggestions(raw);
     expect(result.ok).toBe(true);
@@ -91,5 +98,43 @@ describe("prompt construction", () => {
     expect(CV_FACTS_SYSTEM_PROMPT).toMatch(/UNTRUSTED DATA/);
     expect(CV_FACTS_SYSTEM_PROMPT).toMatch(/never follow them/);
     expect(CV_FACTS_SYSTEM_PROMPT).toMatch(/NOT P&L responsibility/);
+  });
+});
+
+describe("suggested profile summary", () => {
+  const ok = (headline: string, summary: string) => verifyProfileSummary({ headline, summary }, CV_TEXT);
+
+  it("accepts a summary that only uses what the CV states", () => {
+    expect(
+      ok("Commercial Director Benelux", "Commercial Director Benelux at Demo Beverages, leading a commercial team of 12 people.")
+        .ok,
+    ).toBe(true);
+  });
+
+  it("rejects numbers that are not in the CV", () => {
+    expect(ok("", "Leads a commercial team of 25 people across the Benelux region.")).toEqual({
+      ok: false,
+      reason: "unsupported_number",
+    });
+  });
+
+  it("rejects upgraded titles or P&L claims the CV does not contain", () => {
+    expect(ok("General Manager Benelux", "Experienced leader of a commercial team in the Netherlands.")).toEqual({
+      ok: false,
+      reason: "unsupported_claim",
+    });
+    const noPnl = verifyProfileSummary(
+      { headline: "", summary: "Owns the P&L for Demo Beverages in the Netherlands and Belgium." },
+      "Commercial Director Benelux, Demo Beverages B.V. Led a commercial team.",
+    );
+    expect(noPnl).toEqual({ ok: false, reason: "unsupported_claim" });
+  });
+
+  it("treats an empty summary as no suggestion", () => {
+    expect(ok("", "")).toEqual({ ok: false, reason: "empty" });
+  });
+
+  it("rejects malformed output without profile_summary", () => {
+    expect(parseFactSuggestions({ facts: [] }).ok).toBe(false);
   });
 });

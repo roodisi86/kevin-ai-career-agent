@@ -273,8 +273,8 @@ export function AiSuggestButton({ documentId }: { documentId: string }) {
   const [state, action, pending] = useActionState(suggestFactsFromDocument, initial);
   let resultText: string | null = null;
   if (state.ok && state.message) {
-    const [kept, dropped] = state.message.split("|").map(Number);
-    resultText = t.profile.ai.result(kept, dropped);
+    const [kept, dropped, summary] = state.message.split("|").map(Number);
+    resultText = t.profile.ai.result(kept, dropped, summary === 1);
   }
   return (
     <form action={action} className="space-y-2">

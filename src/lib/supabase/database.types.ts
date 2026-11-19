@@ -38,6 +38,10 @@ export type CandidateProfileRow = {
   desired_seniority: string | null;
   locale: string;
   profile_version: number;
+  suggested_headline: string | null;
+  suggested_summary: string | null;
+  suggestion_document_id: string | null;
+  suggestion_created_at: string | null;
   created_at: string;
   updated_at: string;
 };
