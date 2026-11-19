@@ -54,7 +54,7 @@ test("login → upload CV → confirm a fact → preferences → export → wipe
   await expect(page.getByText(/^Opgeslagen\./)).toBeVisible();
   await page.reload();
   await expect(page.getByRole("group", { name: "Leaseauto" }).getByLabel("Hard")).toBeChecked();
-  await expect(page.getByText("London Stock Exchange Group")).toBeVisible();
+  await expect(page.getByText("London Stock Exchange Group", { exact: true })).toBeVisible();
 
   // Dashboard reflects the state.
   await page.goto("/dashboard");
