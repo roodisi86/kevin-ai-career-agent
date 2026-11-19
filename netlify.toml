@@ -7,3 +7,9 @@
 [build.environment]
   NODE_VERSION = "22"
   NEXT_TELEMETRY_DISABLED = "1"
+
+# Next.js runtime (OpenNext adapter). Normally auto-detected; declared
+# explicitly because API/zip deploys did not apply it. Not version-pinned:
+# Netlify keeps it up to date.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
