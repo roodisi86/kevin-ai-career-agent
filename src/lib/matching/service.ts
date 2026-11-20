@@ -109,11 +109,11 @@ export async function loadCandidateMatchInput(ctx: AppContext): Promise<Candidat
 type MatchableJob = Pick<
   JobRow,
   | "id" | "title" | "company_name" | "location_text" | "workplace_type" | "provider" | "description_text"
-  | "description_is_truncated" | "signals_json" | "salary_json" | "gate_status" | "gate_json" | "raw_hash"
+  | "description_is_truncated" | "signals_json" | "salary_json" | "gate_status" | "gate_json" | "raw_hash" | "import_source"
 >;
 
 const MATCHABLE_COLUMNS =
-  "id, title, company_name, location_text, workplace_type, provider, description_text, description_is_truncated, signals_json, salary_json, gate_status, gate_json, raw_hash";
+  "id, title, company_name, location_text, workplace_type, provider, description_text, description_is_truncated, signals_json, salary_json, gate_status, gate_json, raw_hash, import_source";
 
 function hashFor(job: Pick<MatchableJob, "raw_hash" | "gate_status">, input: CandidateMatchInput, model: string): string {
   return matchInputHash({ model, candidate: input.candidateHash, jobRawHash: job.raw_hash, gate: job.gate_status });

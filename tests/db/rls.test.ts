@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   allowOwner,
@@ -679,5 +680,72 @@ describe("pilot: applications, digests and company signals", () => {
       ),
     );
     expect(code).toBe("23514");
+  });
+});
+
+describe("Grok import keys, leads and application packages", () => {
+  const TOKEN_A = "kca_demoAAAA_0123456789abcdefghijklmnopqrstuv";
+  const hash = (t: string) => createHash("sha256").update(t).digest("hex");
+
+  async function createToken(token: string) {
+    await asUser(
+      db.pool,
+      userA,
+      (c) =>
+        c.query(
+          `insert into public.import_tokens (tenant_id, created_by, label, token_hash, token_prefix) values ($1, $2, 'DEMO Grok', $3, $4)`,
+          [tenantA, userA, hash(token), token.slice(0, 8)],
+        ),
+      { commit: true },
+    );
+  }
+  const submit = (token: string, leads: unknown) =>
+    asRole(db.pool, "anon", null, (c) =>
+      c.query<{ r: { accepted: number; duplicates: number; rejected: number } }>("select public.submit_job_leads($1, $2::jsonb) as r", [token, JSON.stringify(leads)]).then((r) => r.rows[0].r),
+    { commit: true });
+
+  it("a valid key can only submit leads into its own workspace; duplicates and bad rows are counted", async () => {
+    await createToken(TOKEN_A);
+    const lead = { title: "DEMO Commercial Director", company: "DEMO Co", url: "https://example.com/jobs/1", reason: "DEMO" };
+    const r = await submit(TOKEN_A, [lead, lead, { title: "x", company: "", url: "https://example.com/2" }, { title: "y", company: "z", url: "javascript:alert(1)" }]);
+    expect(r).toEqual({ accepted: 1, duplicates: 1, rejected: 2 });
+    const mine = await asUser(db.pool, userA, (c) => c.query("select tenant_id from public.job_leads").then((x) => x.rows));
+    expect(mine.length).toBe(1);
+    expect(mine[0].tenant_id).toBe(tenantA);
+    const theirs = await asUser(db.pool, userB, (c) => c.query("select 1 from public.job_leads").then((x) => x.rowCount));
+    expect(theirs).toBe(0);
+  });
+
+  it("wrong or revoked keys are refused, and anon cannot read anything", async () => {
+    expect(await expectPgError(submit("kca_wrongwrongwrongwrongwrong", [{ title: "a", company: "b", url: "https://example.com/x" }]))).toBe("28000");
+    const token = "kca_demoBBBB_0123456789abcdefghijklmnopqrstuv";
+    await createToken(token);
+    await asUser(db.pool, userA, (c) => c.query("update public.import_tokens set revoked_at = now() where token_hash = $1", [hash(token)]), { commit: true });
+    expect(await expectPgError(submit(token, [{ title: "a", company: "b", url: "https://example.com/y" }]))).toBe("28000");
+    expect(await expectPgError(asRole(db.pool, "anon", null, (c) => c.query("select * from public.import_tokens")))).toBe("42501");
+    expect(await expectPgError(asRole(db.pool, "anon", null, (c) => c.query("select * from public.job_leads")))).toBe("42501");
+  });
+
+  it("members cannot rewrite a key hash and user B cannot create a key for A's workspace", async () => {
+    expect(
+      await expectPgError(asUser(db.pool, userA, (c) => c.query("update public.import_tokens set token_hash = repeat('a', 64)"))),
+    ).toBe("42501");
+    expect(
+      await expectPgError(
+        asUser(db.pool, userB, (c) =>
+          c.query(`insert into public.import_tokens (tenant_id, created_by, label, token_hash, token_prefix) values ($1, $2, 'x', repeat('b', 64), 'kca_xxxx')`, [tenantA, userB]),
+        ),
+      ),
+    ).toBe("42501");
+  });
+
+  it("rejects oversized batches", async () => {
+    const many = Array.from({ length: 26 }, (_, i) => ({ title: "t", company: "c", url: `https://example.com/m/${i}` }));
+    expect(await expectPgError(submit(TOKEN_A, many))).toBe("22023");
+  });
+
+  it("user B cannot read A's application packages", async () => {
+    const n = await asUser(db.pool, userB, (c) => c.query("select 1 from public.application_packages").then((x) => x.rowCount));
+    expect(n).toBe(0);
   });
 });

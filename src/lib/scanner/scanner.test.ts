@@ -331,6 +331,8 @@ describe("title relevance", () => {
     const job = { title: "Deputy General Manager", company_name: "DEMO Hotel", location_text: "Amsterdam", country_code: "nl", workplace_type: "onsite" as const };
     expect(refilterReason(prefs, { ...job, provider: "adzuna" })).toMatch(/deputy/);
     expect(refilterReason(prefs, { ...job, provider: "manual" })).toBeNull();
+    // Leads from Grok Bot are filtered like any feed.
+    expect(refilterReason(prefs, { ...job, provider: "manual", import_source: "grok_bot" })).toMatch(/deputy/);
   });
 });
 

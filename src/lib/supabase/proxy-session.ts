@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { getPublicEnv } from "@/lib/env";
 
-const PUBLIC_PATHS = ["/login"];
+// /api/import authenticates with a personal import key (Bearer), not a session.
+const PUBLIC_PATHS = ["/login", "/api/import"];
 
 export function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));

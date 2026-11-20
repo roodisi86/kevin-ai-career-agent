@@ -207,15 +207,18 @@ export interface StoredJobForRefilter {
   location_text: string | null;
   country_code: string | null;
   workplace_type: RawPosting["workplaceType"];
+  /** Set for imports; Grok Bot leads go through the same filter as feeds. */
+  import_source?: "user" | "grok_bot" | null;
 }
 
 /**
  * Re-runs the relevance filter on a stored job (after the user tightened the
  * filter). Returns the reason it is now filtered out, or null when it stays.
- * Manually imported jobs are never filtered: the user chose them.
+ * Jobs the user imported himself are never filtered: he chose them. Leads
+ * from Grok Bot are filtered like any feed.
  */
 export function refilterReason(prefs: Preferences, job: StoredJobForRefilter): string | null {
-  if (job.provider === "manual") return null;
+  if (job.provider === "manual" && job.import_source !== "grok_bot") return null;
   const relevance = assessRelevance(
     {
       externalId: "stored",

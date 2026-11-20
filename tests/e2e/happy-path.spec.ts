@@ -14,7 +14,7 @@ test.skip(!email || !password, "E2E_EMAIL / E2E_PASSWORD not set — demo accoun
 
 test("login → upload CV → confirm a fact → preferences → export → wipe", async ({ page }) => {
   // A long journey against hosted Supabase (EU): allow more than the 30 s default.
-  test.setTimeout(120_000);
+  test.setTimeout(180_000);
   await page.goto("/login");
   await page.getByLabel("E-mailadres").fill(email!);
   await page.getByLabel("Wachtwoord").fill(password!);
@@ -211,6 +211,61 @@ test("login → upload CV → confirm a fact → preferences → export → wipe
   await expect(page.getByTestId("funnel-applications")).toHaveText("2");
   await expect(page.getByTestId("funnel-conversations")).toHaveText("1");
 
+  // Application package: requested in the app, answered by the (synthetic) Claude task, verified by the app.
+  await page.goto("/vacatures");
+  await page.getByTestId("job").filter({ hasText: "DEMO Country Manager Benelux" }).getByRole("link", { name: "Sollicitatiepakket" }).click();
+  await page.getByRole("button", { name: "Maak sollicitatiepakket" }).click();
+  await expect(page.getByTestId("package-pending")).toBeVisible();
+  await db.auth.signInWithPassword({ email: email!, password: password! });
+  const { error: packageError } = await db
+    .from("application_packages")
+    .update({
+      status: "answered",
+      output_json: {
+        language: "en",
+        coverLetter: "Dear Hiring Team, DEMO letter: I am applying for the Country Manager Benelux role because I built distributor partnerships. Kind regards,",
+        highlights: [
+          { requirement: "DEMO partnerships", jobQuote: null, facts: ["F1"], text: "DEMO highlight." },
+          { requirement: "DEMO invented", jobQuote: null, facts: ["F99"], text: "Owned a P&L of 99 million." },
+        ],
+        screeningAnswers: [{ question: "Notice period?", answer: "[to be completed by candidate]", facts: [] }],
+      },
+    })
+    .eq("job_id", demoJob!.id);
+  expect(packageError).toBeNull();
+  await page.reload();
+  await expect(page.getByTestId("package-letter")).toContainText("Motivatiebrief");
+  await expect(page.getByText("DEMO highlight.")).toBeVisible();
+  await expect(page.getByText("Owned a P&L of 99 million.")).toHaveCount(0);
+  await page.getByRole("textbox", { name: "Motivatiebrief" }).fill("Dear Hiring Team, DEMO edited letter. I led a team of 250 people. Kind regards,");
+  await page.getByRole("button", { name: "Brief opslaan" }).click();
+  await expect(page.getByText("door jou aangepast")).toBeVisible();
+  await expect(page.getByTestId("package-letter").getByRole("alert")).toContainText("getal");
+  await page.getByRole("button", { name: "Ik heb zelf gesolliciteerd" }).click();
+  await expect(page.getByText("Vastgelegd in je sollicitaties.")).toBeVisible();
+
+  // Grok Bot link: a personal key may only add leads; they arrive as not-verified jobs.
+  await page.goto("/instellingen");
+  await page.getByRole("button", { name: "Nieuwe sleutel maken" }).click();
+  const importKey = (await page.getByTestId("new-import-token").locator("code").textContent())!.trim();
+  expect(importKey).toMatch(/^kca_/);
+  const lead = { title: "DEMO Commercial Director Benelux", company: "DEMO Grok Co", url: "https://example.com/demo-grok-job", location: "Amsterdam, Netherlands", reason: "DEMO reason from Grok", description: "DEMO vacancy text. Lead the commercial strategy and partnerships in the Benelux." };
+  const accepted = await page.request.post("/api/import/jobs", { headers: { Authorization: `Bearer ${importKey}` }, data: { jobs: [lead] } });
+  expect(accepted.status()).toBe(200);
+  expect(await accepted.json()).toMatchObject({ ok: true, accepted: 1 });
+  const noKey = await page.request.post("/api/import/jobs", { data: { jobs: [lead] } });
+  expect(noKey.status()).toBe(401);
+  await page.goto("/vacatures?view=all");
+  const grokJob = page.getByTestId("job").filter({ hasText: "DEMO Commercial Director Benelux" });
+  await expect(grokJob).toContainText("Grok Bot · niet geverifieerd");
+  await expect(grokJob).toContainText("DEMO reason from Grok");
+  await page.goto("/instellingen");
+  await page.getByRole("button", { name: "Intrekken" }).click();
+  await expect(page.getByText("ingetrokken")).toBeVisible();
+  const revoked = await page.request.post("/api/import/jobs", { headers: { Authorization: `Bearer ${importKey}` }, data: { jobs: [{ ...lead, url: "https://example.com/other" }] } });
+  expect(revoked.status()).toBe(401);
+  await db.auth.signOut();
+
   // Dashboard reflects the state.
   await page.goto("/dashboard");
   await expect(page.getByTestId("count-confirmed")).toHaveText("1");
@@ -232,6 +287,9 @@ test("login → upload CV → confirm a fact → preferences → export → wipe
   expect(exported.applications).toHaveLength(2);
   expect(exported.company_signals).toHaveLength(1);
   expect(exported.daily_digests).toHaveLength(1);
+  expect(exported.job_leads).toHaveLength(1);
+  expect(exported.application_packages).toHaveLength(1);
+  expect(JSON.stringify(exported.import_keys)).not.toContain("token_hash");
 
   // Wipe everything and verify it is gone.
   await page.getByLabel("Typ VERWIJDER om te bevestigen").fill("VERWIJDER");

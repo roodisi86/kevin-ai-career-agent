@@ -49,7 +49,7 @@ export async function importJob(_prev: ImportState, formData: FormData): Promise
     const result = await importManualJob(ctx, parsed.data);
     await refreshMatches(ctx);
     revalidatePath("/vacatures");
-    return { ok: true, code: result.duplicate ? "updated" : null };
+    return { ok: true, code: "duplicate" in result && result.duplicate ? "updated" : null };
   } catch {
     return { ok: false, code: "error" };
   }

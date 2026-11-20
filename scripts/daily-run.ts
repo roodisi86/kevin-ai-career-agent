@@ -23,6 +23,8 @@ import { finishScan, runSourceInScan, startScan, verifyPendingTargets } from "@/
 import { pendingMatchJobIds, refreshMatches, scoreJob } from "@/lib/matching/service";
 import { generateDigest } from "@/lib/pilot/service";
 import { processSignalAnswers, requestSignals } from "@/lib/signals/service";
+import { processJobLeads } from "@/lib/leads/service";
+import { processPackageAnswers } from "@/lib/packages/service";
 
 const MAX_MATCHES_PER_RUN = 120;
 const STOP = new Set(["not_configured", "cap_reached", "no_facts"]);
@@ -117,6 +119,10 @@ async function main(): Promise<number> {
         `${label}: scan ${finished.status} — ${ok} sources ok, ${failed} failed, ${relevant} relevant, ${fresh} new, ${finished.duplicates} duplicates`,
       );
 
+      // 1b. Leads from the user's Grok Bot (imported as not-verified manual jobs).
+      const leads = await processJobLeads(ctx);
+      console.log(`${label}: Grok Bot leads imported ${leads.imported}, filtered ${leads.filtered}, failed ${leads.failed}`);
+
       // 2. Free assessment: rules for every job, the best queued for Claude.
       const refreshed = await refreshMatches(ctx);
       console.log(
@@ -133,6 +139,10 @@ async function main(): Promise<number> {
       } catch (error) {
         console.error(`${label}: signals step failed (${(error as Error).message?.slice(0, 80)})`);
       }
+
+      // 3b. Application packages answered by the Claude task.
+      const packages = await processPackageAnswers(ctx);
+      if (packages.processed || packages.rejected) console.log(`${label}: packages ready ${packages.processed}, rejected ${packages.rejected}`);
 
       // 4. Paid API path, only when an ANTHROPIC_API_KEY is configured.
       if (isApiMatchingEnabled()) await runApiPath(ctx, label);

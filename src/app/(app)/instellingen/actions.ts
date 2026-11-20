@@ -59,6 +59,10 @@ export async function deleteAllCandidateData(_prev: DeleteState, formData: FormD
     supabase.from("applications").delete().eq("tenant_id", ctx.tenantId),
     supabase.from("daily_digests").delete().eq("tenant_id", ctx.tenantId),
     supabase.from("signal_requests").delete().eq("tenant_id", ctx.tenantId),
+    supabase.from("application_packages").delete().eq("tenant_id", ctx.tenantId),
+    supabase.from("job_leads").delete().eq("tenant_id", ctx.tenantId),
+    // Keys cannot be deleted by clients; wiping revokes them.
+    supabase.from("import_tokens").update({ revoked_at: new Date().toISOString() }).eq("tenant_id", ctx.tenantId).is("revoked_at", null),
     supabase.from("jobs").delete().eq("tenant_id", ctx.tenantId),
     supabase.from("job_sources").delete().eq("tenant_id", ctx.tenantId),
     supabase.from("company_targets").delete().eq("tenant_id", ctx.tenantId),
@@ -69,4 +73,34 @@ export async function deleteAllCandidateData(_prev: DeleteState, formData: FormD
   await audit(ctx, "data.deleted", "candidate_profile", ctx.candidateId, { documents: docs.length });
   revalidatePath("/", "layout");
   return { ok: true, error: null };
+}
+
+export type TokenState = { token: string | null; error: "invalid" | "db" | null };
+
+/** Creates a personal import key for Grok Bot. Only its hash is stored; the key is shown once. */
+export async function createImportToken(_prev: TokenState, formData: FormData): Promise<TokenState> {
+  const ctx = await getAppContext();
+  const label = String(formData.get("label") ?? "").trim().slice(0, 80) || "Grok Bot";
+  const { generateImportToken } = await import("@/lib/leads/tokens");
+  const { token, hash, prefix } = generateImportToken();
+  const supabase = await createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("import_tokens")
+    .insert({ tenant_id: ctx.tenantId, created_by: ctx.userId, label, token_hash: hash, token_prefix: prefix })
+    .select("id")
+    .single();
+  if (error) return { token: null, error: "db" };
+  await audit(ctx, "import_token.created", "import_token", data.id, {});
+  revalidatePath("/instellingen");
+  return { token, error: null };
+}
+
+export async function revokeImportToken(formData: FormData): Promise<void> {
+  const ctx = await getAppContext();
+  const id = String(formData.get("id") ?? "");
+  if (!/^[0-9a-f-]{36}$/.test(id)) return;
+  const supabase = await createSupabaseServerClient();
+  const { error } = await supabase.from("import_tokens").update({ revoked_at: new Date().toISOString() }).eq("tenant_id", ctx.tenantId).eq("id", id);
+  if (!error) await audit(ctx, "import_token.revoked", "import_token", id, {});
+  revalidatePath("/instellingen");
 }

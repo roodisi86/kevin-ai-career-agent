@@ -7,6 +7,7 @@ import { trackIds, type TrackId } from "@/lib/preferences/schema";
 import { formatDateTime } from "@/lib/time";
 import { getServerEnv, isApiMatchingEnabled } from "@/lib/env";
 import { pendingMatchJobIds, refreshMatches } from "@/lib/matching/service";
+import { leadNotesForJobs, processJobLeads, type LeadNote } from "@/lib/leads/service";
 import { SUBSCRIPTION_MODEL, type MatchResult } from "@/lib/ai/match";
 import { isRulesModel } from "@/lib/matching/rules";
 import type { JobMatchRow, MatchFeedbackRow } from "@/lib/supabase/database.types";
@@ -183,12 +184,14 @@ function JobCard({
   match,
   feedback,
   inPipeline,
+  leadNote,
 }: {
   job: JobListRow;
   duplicates: JobListRow[];
   match: MatchView | undefined;
   feedback: FeedbackView | undefined;
   inPipeline: boolean;
+  leadNote: LeadNote | undefined;
 }) {
   const signals = (job.signals_json ?? {}) as Record<string, { value?: string; evidence?: string } | unknown>;
   const checks = (((job.gate_json ?? {}) as { checks?: { key: string; mode: string; outcome: string; detail?: string }[] }).checks ?? []).filter(
@@ -209,6 +212,7 @@ function JobCard({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Link href={`/pakket/${job.id}`} className="btn-secondary">{t.packages.open}</Link>
           {inPipeline ? (
             <Link href="/sollicitaties" className="badge bg-teal-100 text-teal-700">{t.applications.inPipeline}</Link>
           ) : (
@@ -246,8 +250,16 @@ function JobCard({
         {job.user_state !== "new" && <span className="badge bg-navy-800 text-white">{t.jobs.card.states[job.user_state]}</span>}
       </div>
 
+      {leadNote?.reason && (
+        <p className="text-sm text-navy-600">
+          <span className="font-medium">{t.grok.noteLabel}: </span>
+          {leadNote.reason}
+          {leadNote.salary_text ? ` · salaris: ${leadNote.salary_text}` : ""}
+          {leadNote.contract_text ? ` · contract: ${leadNote.contract_text}` : ""}
+        </p>
+      )}
       <p className="text-xs text-navy-600">
-        {t.jobs.card.source}: {SOURCE_LABELS[job.provider]}
+        {t.jobs.card.source}: {job.import_source === "grok_bot" ? t.grok.sourceLabel : SOURCE_LABELS[job.provider]}
         {job.provider === "jobicy" && ` · ${t.jobs.card.attributionJobicy}`}
         {job.provider === "adzuna" && (
           <>
@@ -347,12 +359,14 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
   const viewParam = one(params.view);
 
   // Process answers from the Claude task and score any new jobs before listing.
+  // Grok Bot leads first, so they are filtered and scored in the same pass.
+  await processJobLeads(ctx);
   const refresh = await refreshMatches(ctx);
   const supabase = await createSupabaseServerClient();
   let query = supabase
     .from("jobs")
     .select(
-      "id, provider, company_name, title, canonical_url, description_text, description_is_truncated, location_text, country_code, workplace_type, salary_json, signals_json, track_hits, gate_status, gate_json, status, status_reason, published_at, first_seen_at, last_seen_at, status_checked_at, user_state, duplicate_of, filtered_out_reason",
+      "id, provider, company_name, title, canonical_url, description_text, description_is_truncated, location_text, country_code, workplace_type, salary_json, signals_json, track_hits, gate_status, gate_json, status, status_reason, published_at, first_seen_at, last_seen_at, status_checked_at, user_state, duplicate_of, filtered_out_reason, import_source",
     )
     .eq("tenant_id", ctx.tenantId)
     .order("first_seen_at", { ascending: false })
@@ -400,6 +414,10 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
     ]);
 
   const inPipeline = new Set((pipelineRows ?? []).map((r) => r.job_id));
+  const leadNotes = await leadNotesForJobs(
+    ctx,
+    (rows ?? []).filter((j) => j.import_source === "grok_bot").map((j) => j.id),
+  );
   const matches = new Map((matchRows ?? []).map((row) => [row.job_id, row as MatchView]));
   const feedbackByJob = new Map((feedbackRows ?? []).map((row) => [row.job_id, row as FeedbackView]));
   // Default: recommended when there are assessments, otherwise everything.
@@ -541,6 +559,7 @@ export default async function JobsPage({ searchParams }: { searchParams: SearchP
               match={matches.get(job.id)}
               feedback={feedbackByJob.get(job.id)}
               inPipeline={inPipeline.has(job.id)}
+              leadNote={leadNotes.get(job.id)}
             />
           ))}
         </ul>

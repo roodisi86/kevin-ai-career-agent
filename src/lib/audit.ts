@@ -41,7 +41,14 @@ export type AuditAction =
   | "signals.requested"
   | "signals.processed"
   | "signals.feedback"
-  | "company.watch_changed";
+  | "company.watch_changed"
+  | "import_token.created"
+  | "import_token.revoked"
+  | "leads.processed"
+  | "package.requested"
+  | "package.processed"
+  | "package.edited"
+  | "package.applied";
 
 type SafeMetadata = Record<string, string | number | boolean | null>;
 

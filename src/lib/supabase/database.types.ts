@@ -213,6 +213,7 @@ export type JobRow = {
   dedupe_key: string;
   duplicate_of: string | null;
   user_state: "new" | "interesting" | "later" | "not_relevant";
+  import_source: "user" | "grok_bot" | null;
   filtered_out_reason: string | null;
   created_at: string;
   updated_at: string;
@@ -455,6 +456,63 @@ export type DailyDigestRow = {
   updated_at: string;
 };
 
+export type ImportTokenRow = {
+  id: string;
+  tenant_id: string;
+  created_by: string;
+  label: string;
+  token_hash: string;
+  token_prefix: string;
+  use_count: number;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+};
+
+export type JobLeadRow = {
+  id: string;
+  tenant_id: string;
+  token_id: string | null;
+  source: "grok_bot";
+  title: string;
+  company: string;
+  url: string;
+  url_hash: string;
+  location: string | null;
+  posted: string | null;
+  salary_text: string | null;
+  contract_text: string | null;
+  reason: string | null;
+  description: string | null;
+  status: "pending" | "imported" | "duplicate" | "rejected";
+  reject_reason: string | null;
+  job_id: string | null;
+  created_at: string;
+  processed_at: string | null;
+};
+
+export type ApplicationPackageRow = {
+  id: string;
+  tenant_id: string;
+  candidate_id: string;
+  job_id: string;
+  status: "pending" | "answered" | "ready" | "rejected";
+  prompt_text: string;
+  fact_refs_json: Json;
+  output_json: Json | null;
+  package_json: Json | null;
+  letter_text: string | null;
+  letter_edited: boolean;
+  warnings_json: Json;
+  prompt_version: string;
+  error: string | null;
+  requested_by: string | null;
+  answered_at: string | null;
+  processed_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Database = {
   __InternalSupabase: { PostgrestVersion: "14.18" };
   public: {
@@ -496,10 +554,14 @@ export type Database = {
       applications: TableDef<ApplicationRow, "tenant_id" | "candidate_id" | "company_name" | "role_title">;
       application_events: TableDef<ApplicationEventRow, "tenant_id" | "application_id" | "event_type">;
       daily_digests: TableDef<DailyDigestRow, "tenant_id" | "digest_date" | "push_text">;
+      import_tokens: TableDef<ImportTokenRow, "tenant_id" | "created_by" | "label" | "token_hash" | "token_prefix">;
+      job_leads: TableDef<JobLeadRow, "tenant_id" | "title" | "company" | "url" | "url_hash">;
+      application_packages: TableDef<ApplicationPackageRow, "tenant_id" | "candidate_id" | "job_id" | "prompt_text" | "prompt_version">;
     };
     Views: { [_ in never]: never };
     Functions: {
       bootstrap_tenant: { Args: never; Returns: string };
+      submit_job_leads: { Args: { p_token: string; p_leads: Json }; Returns: Json };
     };
     Enums: { [_ in never]: never };
     CompositeTypes: { [_ in never]: never };

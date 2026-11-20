@@ -256,7 +256,7 @@ export async function finishScan(ctx: AppContext, scanId: string) {
   const { data: jobs } = await supabase
     .from("jobs")
     .select(
-      "id, provider, first_seen_at, dedupe_key, duplicate_of, company_name, title, location_text, country_code, workplace_type, signals_json, salary_json, gate_status, status, filtered_out_reason",
+      "id, provider, import_source, first_seen_at, dedupe_key, duplicate_of, company_name, title, location_text, country_code, workplace_type, signals_json, salary_json, gate_status, status, filtered_out_reason",
     )
     .eq("tenant_id", ctx.tenantId)
     .neq("status", "closed");
@@ -397,7 +397,18 @@ export interface ManualJobInput {
   text: string;
 }
 
-export async function importManualJob(ctx: AppContext, input: ManualJobInput): Promise<{ id: string; duplicate: boolean }> {
+export type ManualImportResult = { id: string; duplicate: boolean } | { id: null; filteredReason: string };
+
+/**
+ * Stores a vacancy the user (or his Grok Bot) found. The app never fetches the
+ * URL itself: the text is what was handed over, so the job stays "not
+ * automatically verified". Grok Bot leads must pass the relevance filter.
+ */
+export async function importManualJob(
+  ctx: AppContext,
+  input: ManualJobInput,
+  { importSource = "user" as "user" | "grok_bot" } = {},
+): Promise<ManualImportResult> {
   const supabase = await dbFor(ctx);
   const prefs = await loadPreferences(ctx);
   const key = companyKey(input.company);
@@ -424,8 +435,12 @@ export async function importManualJob(ctx: AppContext, input: ManualJobInput): P
     publishedAt: null,
     salary: null,
   };
-  const { record } = toJobRecord(posting, "manual", prefs, companyContext(target), { force: true });
-  if (!record) throw new Error("could not build record");
+  const fromBot = importSource === "grok_bot";
+  const { record, reasons } = toJobRecord(posting, "manual", prefs, companyContext(target), { force: !fromBot });
+  if (!record) {
+    if (fromBot) return { id: null, filteredReason: (reasons ?? []).join("; ").slice(0, 80) || "not_relevant" };
+    throw new Error("could not build record");
+  }
 
   const { data: existing } = await supabase
     .from("jobs")
@@ -444,6 +459,7 @@ export async function importManualJob(ctx: AppContext, input: ManualJobInput): P
         signals_json: asJson(record.signals_json),
         gate_json: asJson(record.gate_json),
         tenant_id: ctx.tenantId,
+        import_source: importSource,
         last_seen_at: new Date().toISOString(),
       },
       { onConflict: "tenant_id,provider,external_job_id" },
@@ -465,7 +481,7 @@ export async function importManualJob(ctx: AppContext, input: ManualJobInput): P
       await supabase.from("jobs").update({ duplicate_of: t.id === primary.id ? null : primary.id }).eq("id", t.id);
     }
   }
-  await audit(ctx, "job.imported", "job", data.id, { updated: Boolean(existing) });
+  await audit(ctx, "job.imported", "job", data.id, { updated: Boolean(existing), via: importSource });
   return { id: data.id, duplicate: Boolean(existing) };
 }
 
@@ -474,7 +490,7 @@ export type JobListRow = Pick<
   | "id" | "provider" | "company_name" | "title" | "canonical_url" | "description_text" | "description_is_truncated"
   | "location_text" | "country_code" | "workplace_type" | "salary_json" | "signals_json" | "track_hits" | "gate_status"
   | "gate_json" | "status" | "status_reason" | "published_at" | "first_seen_at" | "last_seen_at" | "status_checked_at"
-  | "user_state" | "duplicate_of" | "filtered_out_reason"
+  | "user_state" | "duplicate_of" | "filtered_out_reason" | "import_source"
 >;
 
 /** Re-applies hard gates to all active jobs (after the user changed preferences). */
@@ -483,7 +499,7 @@ export async function regateAll(ctx: AppContext): Promise<number> {
   const prefs = await loadPreferences(ctx);
   const { data: jobs } = await supabase
     .from("jobs")
-    .select("id, provider, title, company_name, location_text, country_code, workplace_type, signals_json, salary_json, gate_status, filtered_out_reason")
+    .select("id, provider, import_source, title, company_name, location_text, country_code, workplace_type, signals_json, salary_json, gate_status, filtered_out_reason")
     .eq("tenant_id", ctx.tenantId)
     .neq("status", "closed");
   let changed = 0;

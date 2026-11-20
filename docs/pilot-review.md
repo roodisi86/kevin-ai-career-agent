@@ -73,3 +73,21 @@ in a user-visible table.
 - False positives can be fed back → match feedback; Pilot page shows precision and false positives.
 - No data leakage or unauthorized messages → RLS tests, no send code, push content test.
 - KPI → conversations with decision makers (applications in screening or later, plus replies).
+
+## 6. Phase 6 additions (Grok Bot link, application packages)
+
+- **Import key.** `kca_` + 32 random bytes, shown once, stored as SHA-256 only, revocable
+  (wipe revokes all keys). The key reaches exactly one database function,
+  `submit_job_leads`, which validates the key, accepts 1–25 leads per call and at most
+  150 per 24 h, and writes only `job_leads` for the key's own workspace. Anonymous
+  callers cannot read any table (tested locally and on the hosted project).
+- **No fetching, no scraping.** The app never opens the job URL of a lead; it uses the
+  text Grok Bot handed over, labels the job "Grok Bot · niet geverifieerd" (status
+  uncertain) and applies the same relevance filter, blockers and scoring as feeds.
+- **Application packages.** Written by the Claude subscription task from confirmed facts
+  only. Highlights without a known fact, with unbacked numbers or heavy claims are dropped;
+  non-verbatim vacancy quotes are removed; the letter (also after the user's edits) is
+  checked for unbacked numbers, P&L-type claims, misrepresentation and salary.
+- **Submitting stays manual.** The Grok Bot form instruction tells the bot to stop before
+  the final submit, never create accounts or accept terms without asking. The app only
+  records "Ik heb zelf gesolliciteerd" after the user says so.

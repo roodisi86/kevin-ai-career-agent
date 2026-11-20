@@ -16,7 +16,7 @@ export async function GET() {
   }
 
   const supabase = await createSupabaseServerClient();
-  const [tenant, profile, documents, facts, preferences, consents, auditEvents, assessment, matches, feedback, aiRequests, outreachRequests, contacts, outreachDrafts, outreachEvents, applications, applicationEvents, digests, signalRequests, signals] = await Promise.all([
+  const [tenant, profile, documents, facts, preferences, consents, auditEvents, assessment, matches, feedback, aiRequests, outreachRequests, contacts, outreachDrafts, outreachEvents, applications, applicationEvents, digests, signalRequests, signals, leads, packages, tokens] = await Promise.all([
     supabase.from("tenants").select("id, name, is_demo, created_at").eq("id", ctx.tenantId).single(),
     supabase.from("candidate_profiles").select("*").eq("id", ctx.candidateId).single(),
     supabase
@@ -42,9 +42,13 @@ export async function GET() {
     supabase.from("daily_digests").select("*").eq("tenant_id", ctx.tenantId),
     supabase.from("signal_requests").select("id, batch_key, status, result_counts, created_at, processed_at").eq("tenant_id", ctx.tenantId),
     supabase.from("company_signals").select("*").eq("tenant_id", ctx.tenantId),
+    supabase.from("job_leads").select("*").eq("tenant_id", ctx.tenantId),
+    supabase.from("application_packages").select("job_id, status, package_json, letter_text, letter_edited, warnings_json, created_at, updated_at").eq("tenant_id", ctx.tenantId),
+    // Never the hash: label, prefix and usage only.
+    supabase.from("import_tokens").select("label, token_prefix, use_count, last_used_at, revoked_at, created_at").eq("tenant_id", ctx.tenantId),
   ]);
 
-  const failed = [tenant, profile, documents, facts, preferences, consents, auditEvents, assessment, matches, feedback, aiRequests, outreachRequests, contacts, outreachDrafts, outreachEvents, applications, applicationEvents, digests, signalRequests, signals].some(
+  const failed = [tenant, profile, documents, facts, preferences, consents, auditEvents, assessment, matches, feedback, aiRequests, outreachRequests, contacts, outreachDrafts, outreachEvents, applications, applicationEvents, digests, signalRequests, signals, leads, packages, tokens].some(
     (r) => r.error,
   );
   if (failed) return NextResponse.json({ error: "export_failed" }, { status: 500 });
@@ -53,7 +57,7 @@ export async function GET() {
 
   const body = {
     exported_at: new Date().toISOString(),
-    format_version: 3,
+    format_version: 4,
     note: "Original CV files are not embedded; download them individually from Mijn profiel.",
     tenant: tenant.data,
     profile: profile.data,
@@ -74,6 +78,9 @@ export async function GET() {
     daily_digests: digests.data,
     signal_requests: signalRequests.data,
     company_signals: signals.data,
+    job_leads: leads.data,
+    application_packages: packages.data,
+    import_keys: tokens.data,
     audit_events: auditEvents.data,
   };
 

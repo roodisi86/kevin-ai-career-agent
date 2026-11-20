@@ -3,7 +3,11 @@ import { getDictionary } from "@/lib/i18n";
 import { getServerEnv, isAiConfigured } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/time";
+import { headers } from "next/headers";
 import { DeleteAllForm } from "./delete-form";
+import { GrokTokenForm } from "./grok-token-form";
+import { revokeImportToken } from "./actions";
+import { CopyButton } from "../copy-button";
 
 const t = getDictionary();
 
@@ -17,6 +21,26 @@ export default async function SettingsPage() {
     .order("occurred_at", { ascending: false })
     .limit(50);
   const env = getServerEnv();
+  const [{ data: tokens }, { data: leadRows }] = await Promise.all([
+    supabase
+      .from("import_tokens")
+      .select("id, label, token_prefix, use_count, last_used_at, revoked_at, created_at")
+      .eq("tenant_id", ctx.tenantId)
+      .order("created_at", { ascending: false }),
+    supabase.from("job_leads").select("status").eq("tenant_id", ctx.tenantId).limit(5000),
+  ]);
+  const leadCount = (s: string) => (leadRows ?? []).filter((l) => l.status === s).length;
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "kevin-ai-career-agent.netlify.app";
+  const endpoint = `${host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https"}://${host}/api/import/jobs`;
+  const grokInstruction = [
+    "When you have the list, send it to my Career Agent (do this every run):",
+    `POST ${endpoint}`,
+    "Header: Authorization: Bearer <the import key I gave you via a secure form — never print it in chat or reports>",
+    "Header: Content-Type: application/json",
+    'Body: {"jobs":[{"title":"…","company":"…","url":"original job URL","location":"…","posted":"…","salary":"only if stated, else omit","contract":"only if stated, else omit","reason":"one line why it fits","description":"the vacancy text exactly as shown on the job page (max 20000 characters)"}]}',
+    "Max 25 jobs per request. The reply tells how many were accepted, duplicates and rejected. If it fails, mention that in your report; do not retry more than once.",
+  ].join("\n");
 
   return (
     <div className="space-y-6">
@@ -58,6 +82,49 @@ export default async function SettingsPage() {
           </dl>
         </section>
       </div>
+
+      <section aria-labelledby="grok" className="card space-y-3">
+        <h2 id="grok" className="font-semibold">{t.grok.title}</h2>
+        <p className="max-w-3xl text-sm text-navy-600">{t.grok.intro}</p>
+        <GrokTokenForm />
+        <div>
+          <h3 className="text-sm font-medium">{t.grok.keys}</h3>
+          {(tokens ?? []).length === 0 ? (
+            <p className="text-sm text-navy-600">{t.grok.noKeys}</p>
+          ) : (
+            <ul className="space-y-1 text-sm">
+              {(tokens ?? []).map((k) => (
+                <li key={k.id} className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{k.label}</span>
+                  <code className="text-xs">{k.token_prefix}…</code>
+                  <span className="text-navy-600">
+                    {t.grok.lastUsed}: {k.last_used_at ? formatDateTime(k.last_used_at) : t.grok.never} · {t.grok.uses(k.use_count)}
+                  </span>
+                  {k.revoked_at ? (
+                    <span className="badge bg-rose-100 text-rose-800">{t.grok.revoked}</span>
+                  ) : (
+                    <form action={revokeImportToken}>
+                      <input type="hidden" name="id" value={k.id} />
+                      <button type="submit" className="text-xs underline">{t.grok.revoke}</button>
+                    </form>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="mt-1 text-xs text-navy-600" data-testid="lead-stats">
+            {t.grok.leads(leadCount("pending"), leadCount("imported") + leadCount("duplicate"), leadCount("rejected"))}
+          </p>
+        </div>
+        <div>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-medium">{t.grok.instructionTitle}</h3>
+            <CopyButton text={grokInstruction} label={t.grok.copy} copiedLabel={t.grok.copied} />
+          </div>
+          <pre className="mt-1 whitespace-pre-wrap rounded-lg bg-sand-100 p-3 text-xs">{grokInstruction}</pre>
+          <p className="text-xs text-navy-600">{t.grok.endpoint}: <code>{endpoint}</code></p>
+        </div>
+      </section>
 
       <section aria-labelledby="export" className="card">
         <h2 id="export" className="mb-1 font-semibold">
