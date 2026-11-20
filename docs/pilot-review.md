@@ -81,6 +81,10 @@ in a user-visible table.
   `submit_job_leads`, which validates the key, accepts 1–25 leads per call and at most
   150 per 24 h, and writes only `job_leads` for the key's own workspace. Anonymous
   callers cannot read any table (tested locally and on the hosted project).
+- **Route.** The Netlify site is behind visitor-access protection (kept on), so Grok Bot
+  calls `POST <supabase-url>/rest/v1/rpc/submit_job_leads` with the public publishable key
+  and the import key in the body. `/api/import/jobs` stays available for when the site is
+  reachable without that protection.
 - **No fetching, no scraping.** The app never opens the job URL of a lead; it uses the
   text Grok Bot handed over, labels the job "Grok Bot · niet geverifieerd" (status
   uncertain) and applies the same relevance filter, blockers and scoring as feeds.

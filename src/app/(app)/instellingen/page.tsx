@@ -1,9 +1,8 @@
 import { getAppContext } from "@/lib/dal";
 import { getDictionary } from "@/lib/i18n";
-import { getServerEnv, isAiConfigured } from "@/lib/env";
+import { getPublicEnv, getServerEnv, isAiConfigured } from "@/lib/env";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { formatDateTime } from "@/lib/time";
-import { headers } from "next/headers";
 import { DeleteAllForm } from "./delete-form";
 import { GrokTokenForm } from "./grok-token-form";
 import { revokeImportToken } from "./actions";
@@ -30,16 +29,18 @@ export default async function SettingsPage() {
     supabase.from("job_leads").select("status").eq("tenant_id", ctx.tenantId).limit(5000),
   ]);
   const leadCount = (s: string) => (leadRows ?? []).filter((l) => l.status === s).length;
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "kevin-ai-career-agent.netlify.app";
-  const endpoint = `${host.startsWith("localhost") || host.startsWith("127.") ? "http" : "https"}://${host}/api/import/jobs`;
+  // The Netlify site sits behind visitor-access protection, so Grok Bot talks to
+  // the database function directly: the publishable key is public by design and
+  // submit_job_leads() checks the import key, caps volume and only adds leads.
+  const pub = getPublicEnv();
+  const endpoint = `${pub.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rpc/submit_job_leads`;
   const grokInstruction = [
     "When you have the list, send it to my Career Agent (do this every run):",
     `POST ${endpoint}`,
-    "Header: Authorization: Bearer <the import key I gave you via a secure form — never print it in chat or reports>",
+    `Header: apikey: ${pub.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY}`,
     "Header: Content-Type: application/json",
-    'Body: {"jobs":[{"title":"…","company":"…","url":"original job URL","location":"…","posted":"…","salary":"only if stated, else omit","contract":"only if stated, else omit","reason":"one line why it fits","description":"the vacancy text exactly as shown on the job page (max 20000 characters)"}]}',
-    "Max 25 jobs per request. The reply tells how many were accepted, duplicates and rejected. If it fails, mention that in your report; do not retry more than once.",
+    'Body: {"p_token":"<the import key I gave you via a secure secret card — never print it>","p_leads":[{"title":"…","company":"…","url":"original job URL","location":"…","posted":"…","salary":"only if stated","contract":"only if stated","reason":"one line why it fits","description":"the vacancy text exactly as shown on the job page (max 20000 characters)"}]}',
+    "Max 25 jobs per request. The reply is {\"accepted\":n,\"duplicates\":n,\"rejected\":n}. A 403 with \"invalid token\" means the key is wrong or revoked. If it fails, mention that in your report; do not retry more than once.",
   ].join("\n");
 
   return (
