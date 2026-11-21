@@ -93,7 +93,7 @@ Without `ANTHROPIC_API_KEY` the app scores every job with deterministic rules (`
 
 ## Daily automation
 
-`.github/workflows/daily-run.yml` runs `scripts/daily-run.ts` twice every morning (05:17 and 08:23 UTC) and on demand: it verifies new company boards, scans all approved sources, scores jobs (rules + Claude queue), processes company-signal answers, queues one signal batch per ISO week and stores the daily digest (idempotent per Amsterdam date). It signs in as a dedicated automation user that is a plain `member` of the tenant, so RLS applies; there is no service-role key anywhere. It never sends, applies or contacts anyone, and logs counts only.
+`.github/workflows/daily-run.yml` runs `scripts/daily-run.ts` twice every morning and on demand. GitHub's own schedule starts hours late, so the Claude scheduled task "Career Agent ochtendrun starten" dispatches it at 06:13 and 07:13 Amsterdam via the REST API; the 05:17 UTC cron is only a fallback. Each run it verifies new company boards, scans all approved sources, scores jobs (rules + Claude queue), processes company-signal answers, queues one signal batch per ISO week and stores the daily digest (idempotent per Amsterdam date). It signs in as a dedicated automation user that is a plain `member` of the tenant, so RLS applies; there is no service-role key anywhere. It never sends, applies or contacts anyone, and logs counts only.
 
 Setup (once): create the automation user in Supabase Auth (auto-confirm), add it to `public.memberships` with role `member`, and set the repository secrets `AUTOMATION_EMAIL`, `AUTOMATION_PASSWORD`, `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` (optionally `ANTHROPIC_API_KEY` with `AI_MATCH_MODE=api`). Without them the workflow exits cleanly with "not configured".
 

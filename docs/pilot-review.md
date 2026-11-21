@@ -6,9 +6,9 @@ Status: pilot started 2026-11-20 (first scheduled digest). Review again at day 3
 
 | When (Europe/Amsterdam, winter) | What | Where | Writes |
 |---|---|---|---|
-| 06:17 daily | Verify 150 company boards, scan approved sources, rules scoring, queue top jobs for Claude, process signal answers, queue weekly signal batch, store digest | GitHub Actions `daily-run.yml` (automation member account) | scans, jobs, job_matches, ai_match_requests, company_signals, signal_requests, daily_digests |
+| 06:13 daily | Verify 150 company boards, scan approved sources, rules scoring, queue top jobs for Claude, process signal answers, queue weekly signal batch, store digest | GitHub Actions `daily-run.yml` (automation member account), dispatched by Claude scheduled task "Career Agent ochtendrun starten"; the GitHub cron (05:17 UTC) is only a late fallback | scans, jobs, job_matches, ai_match_requests, company_signals, signal_requests, daily_digests |
 | 06:47 daily | Answer the job-assessment queue; push the digest | Claude scheduled task "Career Agent ochtendbeoordeling" | `ai_match_requests.output_json` only |
-| 09:23 daily | Same pipeline again: processes Claude's answers, refreshes the digest row | GitHub Actions | as above |
+| 07:13 daily | Same pipeline again: processes Claude's answers, refreshes the digest row | GitHub Actions, dispatched by the same Claude task | as above |
 | 08:23–20:23 every 2 h | Answer reverse-recruiter dossiers and signal research | Claude scheduled task "Career Agent reverse recruiter" | `outreach_requests.output_json`, `signal_requests.output_json` only |
 
 The Claude tasks are restricted to one SELECT and one UPDATE per queue table.
